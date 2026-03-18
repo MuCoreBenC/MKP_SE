@@ -186,6 +186,18 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/<details class="params-disclosure params-disclosure-subtle" data-disclosure-id="/);
   });
 
+  it('exposes switch_tower_type as a params selector with slow-line tower default and fast-line lollipop override', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+
+    expect(source).toMatch(/const PARAM_VALUE_DEFAULTS = \{\s*'wiping\.switch_tower_type': 1\s*\};/);
+    expect(source).toMatch(/'wiping\.switch_tower_type': \{[\s\S]*type: 'select'[\s\S]*options: \[/);
+    expect(source).toMatch(/value: 1, label: '擦料塔（慢线，默认）'/);
+    expect(source).toMatch(/value: 2, label: '棒棒糖（快线）'/);
+    expect(source).toMatch(/function createStandardField\(key, value, meta, inputType\) \{[\s\S]*if \(inputType === 'select' && Array\.isArray\(meta\.options\)\) \{/);
+    expect(source).toMatch(/<select data-json-key="\$\{escapeParamHtml\(key\)\}" class="dynamic-param-input param-editable param-input">/);
+    expect(source).toMatch(/switchTowerType: presetData\.wiping\?\.switch_tower_type \?\? 1/);
+  });
+
   it('keeps restore-defaults on the shared saved-state path before re-rendering the params page', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
     const block = source.slice(

@@ -1,8 +1,30 @@
 const { autoUpdater } = require('electron-updater');
-const { app, BrowserWindow, Notification, ipcMain, nativeTheme, shell } = require('electron'); // 必须全部引入
+const { app, BrowserWindow, Notification, ipcMain, nativeTheme, shell, dialog } = require('electron'); // 必须全部引入
 const path = require('path');
 const fs = require('fs');
-const { parseCliArguments, processGcode } = require('./mkp_engine');
+const { exec } = require('child_process');
+const {
+  buildCrashLogMessage,
+  buildGuiRelaunchArgs,
+  buildLogFilePath,
+  buildPrefixedLogLines,
+  buildUpdaterFailureLogMessage
+} = require('./main_process_diagnostics');
+const {
+  buildPostprocessTraceExport,
+  parseCliArguments,
+  processGcodeDetailed
+} = require('./mkp_engine');
+const {
+  createFailedPostprocessReportState,
+  createPendingPostprocessReportState,
+  createPostprocessReportFilePath,
+  getArgValue,
+  launchDetachedPostprocessReportViewer,
+  readPostprocessReportState,
+  resolvePostprocessOutputPath,
+  writePostprocessReportState
+} = require('./postprocess_report_runtime');
 const {
   importHomeCatalogImage,
   readHomeCatalog,
@@ -17,12 +39,152 @@ const {
   saveDefaultCatalogConfig,
   saveDefaultPreset
 } = require('./release-config-ops');
-const { exec } = require('child_process');
 const http = require('http');
 const https = require('https');
 const isCliMode = process.argv.includes('--Gcode');
+const isPostprocessReportMode = process.argv.includes('--postprocess-report');
 const isReleaseCenterMode = process.argv.includes('--release-center');
 const AdmZip = require('adm-zip');
+const LOG_RETENTION_MS = 7 * 24 * 3600 * 1000;
+let hasCleanedExpiredLogs = false;
+const mainProcessDiagnosticsState = {
+  lastPage: 'startup',
+  lastRendererLog: null
+};
+
+function resolveMainProcessMode() {
+  if (isPostprocessReportMode) {
+    return 'postprocess-report';
+  }
+
+  if (isCliMode) {
+    return 'cli';
+  }
+
+  if (isReleaseCenterMode) {
+    return 'release-center';
+  }
+
+  return 'gui';
+}
+
+function safelyGetAppPath() {
+  try {
+    return app.getAppPath();
+  } catch (error) {
+    return null;
+  }
+}
+
+function cleanupExpiredLogs(logDir) {
+  if (hasCleanedExpiredLogs || !fs.existsSync(logDir)) {
+    return;
+  }
+
+  hasCleanedExpiredLogs = true;
+  const nowTime = Date.now();
+  const files = fs.readdirSync(logDir);
+  files.forEach((file) => {
+    if (!file.endsWith('.log')) {
+      return;
+    }
+
+    const filePath = path.join(logDir, file);
+    const stats = fs.statSync(filePath);
+    if (nowTime - stats.mtimeMs > LOG_RETENTION_MS) {
+      fs.unlinkSync(filePath);
+    }
+  });
+}
+
+function appendMainProcessLog(message, options = {}) {
+  try {
+    const userDataPath = options.userDataPath || app.getPath('userData');
+    const logDir = path.join(userDataPath, 'Logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+
+    cleanupExpiredLogs(logDir);
+
+    const now = options.date instanceof Date ? options.date : new Date();
+    const logFile = buildLogFilePath(userDataPath, now);
+    fs.appendFileSync(logFile, buildPrefixedLogLines(message, now), 'utf8');
+    return logFile;
+  } catch (error) {
+    console.error('[E307] Log write err: ' + error.message);
+    return null;
+  }
+}
+
+function captureMainProcessContext(extra = {}) {
+  return {
+    mode: resolveMainProcessMode(),
+    argv: process.argv.slice(),
+    execPath: process.execPath,
+    appPath: safelyGetAppPath(),
+    lastPage: mainProcessDiagnosticsState.lastPage,
+    lastRendererLog: mainProcessDiagnosticsState.lastRendererLog,
+    extra
+  };
+}
+
+function logMainProcessFailure(kind, errorLike, context = {}) {
+  appendMainProcessLog(
+    buildCrashLogMessage(kind, errorLike, {
+      ...captureMainProcessContext(context.extra),
+      ...context
+    })
+  );
+}
+
+function updateDiagnosticsFromRendererLog(message) {
+  const normalized = String(message || '').trim();
+  if (!normalized) {
+    return;
+  }
+
+  mainProcessDiagnosticsState.lastRendererLog = normalized;
+  const pageMatch = normalized.match(/\[UI\]\s+Switch tab,\s+page:([a-z0-9_-]+)/i);
+  if (pageMatch && pageMatch[1]) {
+    mainProcessDiagnosticsState.lastPage = pageMatch[1].toLowerCase();
+  }
+}
+
+process.on('uncaughtExceptionMonitor', (error, origin) => {
+  logMainProcessFailure('uncaughtException', error, {
+    origin: origin || 'uncaughtExceptionMonitor'
+  });
+});
+
+process.on('unhandledRejection', (reason) => {
+  logMainProcessFailure('unhandledRejection', reason);
+});
+
+app.on('render-process-gone', (event, webContents, details) => {
+  logMainProcessFailure('render-process-gone', new Error(details?.reason || 'render-process-gone'), {
+    extra: {
+      reason: details?.reason || null,
+      exitCode: details?.exitCode ?? null
+    }
+  });
+});
+
+app.on('child-process-gone', (event, details) => {
+  logMainProcessFailure('child-process-gone', new Error(details?.reason || 'child-process-gone'), {
+    extra: {
+      type: details?.type || null,
+      reason: details?.reason || null,
+      exitCode: details?.exitCode ?? null,
+      serviceName: details?.serviceName || null,
+      name: details?.name || null
+    }
+  });
+});
+
+appendMainProcessLog(
+  `[INFO] [MainProcess] bootstrap mode=${resolveMainProcessMode()} argv=${JSON.stringify(process.argv)}`
+);
 
 function getProjectRootPath() {
   return path.join(__dirname, '../../');
@@ -649,6 +811,9 @@ ipcMain.handle('apply-hot-update', async (event, payload) => {
 // ==========================================
 ipcMain.on('write-log', (event, message) => {
   try {
+    updateDiagnosticsFromRendererLog(message);
+    appendMainProcessLog(message);
+    return;
     const logDir = path.join(app.getPath('userData'), 'Logs');
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true });
@@ -798,7 +963,164 @@ ipcMain.handle('init-default-presets', async () => {
   }
 });
 
-if (isCliMode) {
+let postprocessReportWindow = null;
+let postprocessReportStatePath = null;
+
+function getCurrentPostprocessReportState() {
+  try {
+    return readPostprocessReportState(postprocessReportStatePath);
+  } catch (error) {
+    return {
+      status: 'failed',
+      steps: [
+        {
+          kind: 'error',
+          title: '读取后处理报告失败',
+          human: '无法读取当前的后处理报告文件。',
+          technical: `Read report failed: ${error.message}`
+        }
+      ],
+      ui: {
+        autoCloseSeconds: 0
+      }
+    };
+  }
+}
+
+function getPostprocessBaseName(report) {
+  const sourcePath = report?.outputPath || report?.inputPath || 'mkp_postprocess';
+  return path.basename(sourcePath, path.extname(sourcePath));
+}
+
+async function exportPostprocessTrace(mode = 'technical') {
+  const report = getCurrentPostprocessReportState();
+  if (!report) {
+    return { success: false, error: '当前没有可导出的后处理报告。' };
+  }
+
+  const baseDir = path.dirname(report.outputPath || report.inputPath || app.getPath('documents'));
+  const defaultPath = path.join(baseDir, `${getPostprocessBaseName(report)}_trace_${mode === 'human' ? 'human' : 'technical'}.md`);
+  const saveResult = await dialog.showSaveDialog({
+    title: '导出后处理步骤',
+    defaultPath,
+    filters: [
+      { name: 'Markdown', extensions: ['md'] },
+      { name: 'Text', extensions: ['txt'] }
+    ]
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { success: false, canceled: true };
+  }
+
+  fs.writeFileSync(saveResult.filePath, buildPostprocessTraceExport(report, mode), 'utf8');
+  return { success: true, filePath: saveResult.filePath };
+}
+
+async function exportPostprocessGcode() {
+  const report = getCurrentPostprocessReportState();
+  if (!report?.outputPath || !fs.existsSync(report.outputPath)) {
+    return { success: false, error: '当前没有可导出的处理后 G-code 文件。' };
+  }
+
+  const saveResult = await dialog.showSaveDialog({
+    title: '导出处理后的 G-code',
+    defaultPath: report.outputPath,
+    filters: [
+      { name: 'G-code', extensions: ['gcode'] }
+    ]
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { success: false, canceled: true };
+  }
+
+  fs.copyFileSync(report.outputPath, saveResult.filePath);
+  return { success: true, filePath: saveResult.filePath };
+}
+
+function registerPostprocessReportHandlers() {
+  ipcMain.removeHandler('get-postprocess-report-state');
+  ipcMain.handle('get-postprocess-report-state', async () => {
+    return getCurrentPostprocessReportState();
+  });
+
+  ipcMain.removeHandler('set-postprocess-report-expanded');
+  ipcMain.handle('set-postprocess-report-expanded', async (event, expanded) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender) || postprocessReportWindow;
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      const width = expanded ? 1100 : 560;
+      const height = expanded ? 860 : 196;
+      targetWindow.setContentSize(width, height, true);
+      targetWindow.center();
+    }
+    return { success: true };
+  });
+
+  ipcMain.removeHandler('close-postprocess-report-window');
+  ipcMain.handle('close-postprocess-report-window', async () => {
+    if (postprocessReportWindow && !postprocessReportWindow.isDestroyed()) {
+      postprocessReportWindow.close();
+    } else {
+      app.quit();
+    }
+    return { success: true };
+  });
+
+  ipcMain.removeHandler('export-postprocess-trace');
+  ipcMain.handle('export-postprocess-trace', async (event, mode = 'technical') => {
+    return exportPostprocessTrace(mode);
+  });
+
+  ipcMain.removeHandler('export-postprocess-gcode');
+  ipcMain.handle('export-postprocess-gcode', async () => {
+    return exportPostprocessGcode();
+  });
+}
+
+function createPostprocessReportWindow() {
+  postprocessReportWindow = new BrowserWindow({
+    width: 560,
+    height: 196,
+    useContentSize: true,
+    resizable: true,
+    minimizable: true,
+    maximizable: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#0f1417',
+    show: false,
+    icon: path.join(__dirname, '../renderer/assets/icons/logo-main.ico'),
+    title: 'MKP 后处理过程',
+    webPreferences: {
+      preload: path.join(__dirname, '../../preload.js'),
+      contextIsolation: true
+    }
+  });
+
+  postprocessReportWindow.once('ready-to-show', () => {
+    if (postprocessReportWindow && !postprocessReportWindow.isDestroyed()) {
+      postprocessReportWindow.show();
+    }
+  });
+
+  postprocessReportWindow.on('closed', () => {
+    postprocessReportWindow = null;
+    app.quit();
+  });
+
+  postprocessReportWindow.loadFile(path.join(__dirname, '../renderer/postprocess_report.html'));
+}
+
+if (isPostprocessReportMode) {
+  if (app.dock) app.dock.hide();
+
+  app.whenReady().then(() => {
+    postprocessReportStatePath = getArgValue(process.argv, '--Report');
+    registerPostprocessReportHandlers();
+    createPostprocessReportWindow();
+  });
+
+} else if (isCliMode) {
   // ==========================================
   // 🌚 隐性人格：CLI 后台处理模式
   // ==========================================
@@ -809,14 +1131,34 @@ if (isCliMode) {
       console.log("[O503] CLI process");
       const cliArgs = parseCliArguments(process.argv);
       const gcodePath = cliArgs.gcodePath;
+      const outputPath = resolvePostprocessOutputPath(gcodePath);
+      const reportPath = createPostprocessReportFilePath(gcodePath);
+
+      writePostprocessReportState(reportPath, createPendingPostprocessReportState({
+        configFormat: cliArgs.configFormat,
+        configPath: cliArgs.configPath,
+        inputPath: gcodePath,
+        outputPath
+      }));
+      launchDetachedPostprocessReportViewer(app, reportPath);
 
       const startTime = Date.now();
-      const processedGcode = processGcode(gcodePath, cliArgs.configPath, {
-        configFormat: cliArgs.configFormat
+      const detailedResult = processGcodeDetailed(gcodePath, cliArgs.configPath, {
+        configFormat: cliArgs.configFormat,
+        outputPath
       });
-      
-      const outputPath = gcodePath.replace('.gcode', '_processed.gcode');
+      const processedGcode = detailedResult.outputGcode;
+
       fs.writeFileSync(outputPath, processedGcode);
+      writePostprocessReportState(reportPath, {
+        ...detailedResult.report,
+        outputPath,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startTime,
+        ui: {
+          autoCloseSeconds: 10
+        }
+      });
       
       const costTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
@@ -828,13 +1170,26 @@ if (isCliMode) {
         }).show();
       }
       
-      setTimeout(() => app.quit(), 3000);
+      setTimeout(() => app.quit(), 300);
     } catch (error) {
       console.error("[E604] CLI exec err: " + error.message);
+      try {
+        const cliArgs = parseCliArguments(process.argv);
+        const gcodePath = cliArgs.gcodePath;
+        const outputPath = resolvePostprocessOutputPath(gcodePath);
+        const reportPath = createPostprocessReportFilePath(gcodePath);
+        writePostprocessReportState(reportPath, createFailedPostprocessReportState({
+          configFormat: cliArgs.configFormat,
+          configPath: cliArgs.configPath,
+          inputPath: gcodePath,
+          outputPath
+        }, error));
+        launchDetachedPostprocessReportViewer(app, reportPath);
+      } catch (reportError) {}
       if (Notification.isSupported()) {
         new Notification({ title: 'MKP 处理失败', body: `❌ ${error.message}` }).show();
       }
-      setTimeout(() => app.quit(), 5000);
+      setTimeout(() => app.quit(), 300);
     }
   });
 
@@ -931,7 +1286,9 @@ if (isCliMode) {
     });
 
     createWindow();
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+      appendMainProcessLog(buildUpdaterFailureLogMessage(error));
+    });
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
@@ -959,7 +1316,20 @@ ipcMain.handle('get-app-version', () => {
 
 // 收到前端指令后重启软件 (热更新完成后调用)
 ipcMain.handle('restart-app', () => {
-  app.relaunch();
+  const relaunchArgs = buildGuiRelaunchArgs({
+    defaultApp: process.defaultApp === true,
+    appPath: safelyGetAppPath(),
+    currentArgv: process.argv.slice()
+  });
+
+  appendMainProcessLog(
+    `[INFO] [MainProcess] restart requested currentArgv=${JSON.stringify(process.argv)} relaunchArgs=${JSON.stringify(relaunchArgs)}`
+  );
+
+  app.relaunch({
+    execPath: process.execPath,
+    args: relaunchArgs
+  });
   app.quit();
 });
 

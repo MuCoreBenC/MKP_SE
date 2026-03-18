@@ -31,6 +31,10 @@ const PARAM_TEMPLATE_DEFAULTS = {
   ]
 };
 
+const PARAM_VALUE_DEFAULTS = {
+  'wiping.switch_tower_type': 1
+};
+
 const PARAM_FIELD_META = {
   version: { label: '预设版本', desc: '当前预设的真实版本号，下载页“最新”也会依赖它。', group: 'meta' },
   printer: { label: '适用机型', desc: '当前预设绑定的机型标识。', group: 'meta' },
@@ -44,6 +48,16 @@ const PARAM_FIELD_META = {
   'toolhead.custom_mount_gcode': { label: '展开动作文本', desc: '控制工具头弹出、锁定或准备动作。', type: 'gcode', group: 'mount' },
   'toolhead.custom_unmount_gcode': { label: '收起动作文本', desc: '控制工具头收回、擦嘴和退出动作。', type: 'gcode', group: 'unmount' },
   'wiping.have_wiping_components': { label: '使用擦嘴塔', desc: '开启后改为打印擦嘴塔；关闭时按擦嘴组件路径处理。字段名虽然叫 components，但原版逻辑实际控制的是擦嘴塔方案。', type: 'boolean', group: 'wiping' },
+  'wiping.switch_tower_type': {
+    label: '擦料塔模式',
+    desc: '对应 Python 的 Switch_Tower_Type。默认使用擦料塔慢线；切到棒棒糖时改为快线恢复模式。',
+    type: 'select',
+    group: 'wiping',
+    options: [
+      { value: 1, label: '擦料塔（慢线，默认）' },
+      { value: 2, label: '棒棒糖（快线）' }
+    ]
+  },
   'wiping.wiper_x': { label: '擦嘴起点 X', desc: '擦嘴塔或擦嘴区域的 X 起始坐标，需要避开模型区域。', unit: 'mm', group: 'wiping' },
   'wiping.wiper_y': { label: '擦嘴起点 Y', desc: '擦嘴塔或擦嘴区域的 Y 起始坐标，需要避开模型区域。', unit: 'mm', group: 'wiping' },
   'wiping.wipetower_speed': { label: '擦嘴塔速度', desc: '擦嘴塔打印速度，过快可能影响稳定性。', unit: 'mm/s', group: 'wiping' },
@@ -840,6 +854,21 @@ function createStandardField(key, value, meta, inputType) {
   const isTextarea = inputType === 'textarea' || meta.multiline;
   const valueText = value == null ? '' : String(value);
 
+  if (inputType === 'select' && Array.isArray(meta.options)) {
+    return `
+      <div class="param-row">
+        ${renderFieldLabel(meta, key, '模式选择')}
+        <div class="param-row-control">
+          <select data-json-key="${escapeParamHtml(key)}" class="dynamic-param-input param-editable param-input">
+            ${meta.options.map((option) => `
+              <option value="${escapeParamHtml(option.value)}" ${String(option.value) === valueText ? 'selected' : ''}>${escapeParamHtml(option.label)}</option>
+            `).join('')}
+          </select>
+        </div>
+      </div>
+    `;
+  }
+
   if (isTextarea) {
     return `
       <div class="param-row param-row-block">
@@ -964,6 +993,12 @@ function resolveTemplateFieldValue(flatData, templateKey) {
 function buildRenderableParamState(flatData = {}) {
   const injectedFlat = { ...flatData };
 
+  Object.keys(PARAM_VALUE_DEFAULTS).forEach((key) => {
+    if (injectedFlat[key] == null) {
+      injectedFlat[key] = cloneParamData(PARAM_VALUE_DEFAULTS[key]);
+    }
+  });
+
   PARAM_TEMPLATE_FIELD_ORDER.forEach((templateKey) => {
     injectedFlat[templateKey] = normalizeParamValueByKey(templateKey, resolveTemplateFieldValue(flatData, templateKey));
   });
@@ -1005,6 +1040,7 @@ function buildDiagnosticsPayload(flatData, presetPath, fileName) {
     },
     wiping: {
       haveWipingComponents: Boolean(presetData.wiping?.have_wiping_components),
+      switchTowerType: presetData.wiping?.switch_tower_type ?? 1,
       wiperX: presetData.wiping?.wiper_x ?? null,
       wiperY: presetData.wiping?.wiper_y ?? null,
       wipeTowerPrintSpeed: presetData.wiping?.wipetower_speed ?? null,
@@ -1352,6 +1388,11 @@ function coerceParamValue(rawValue, input, key = '') {
   }
 
   const value = String(rawValue ?? '');
+  const meta = getParamFieldMeta(key);
+  if (meta.type === 'select' && Array.isArray(meta.options)) {
+    const matchedOption = meta.options.find((option) => String(option.value) === value);
+    if (matchedOption) return matchedOption.value;
+  }
   if (value === 'true') return true;
   if (value === 'false') return false;
   if (input?.type === 'number' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);

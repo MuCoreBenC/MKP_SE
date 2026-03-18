@@ -49,7 +49,12 @@ contextBridge.exposeInMainWorld('mkpAPI', {
   readReleaseConfigPreset: (fileName) => ipcRenderer.invoke('read-release-config-preset', fileName),
   saveReleaseConfigPreset: (payload) => ipcRenderer.invoke('save-release-config-preset', payload),
   runReleaseBuild: (mode) => ipcRenderer.invoke('run-release-build', mode),
-  openReleasePath: (target) => ipcRenderer.invoke('open-release-path', target)
+  openReleasePath: (target) => ipcRenderer.invoke('open-release-path', target),
+  getPostprocessReportState: () => ipcRenderer.invoke('get-postprocess-report-state'),
+  setPostprocessReportExpanded: (expanded) => ipcRenderer.invoke('set-postprocess-report-expanded', expanded),
+  closePostprocessReportWindow: () => ipcRenderer.invoke('close-postprocess-report-window'),
+  exportPostprocessTrace: (mode) => ipcRenderer.invoke('export-postprocess-trace', mode),
+  exportPostprocessGcode: () => ipcRenderer.invoke('export-postprocess-gcode')
   
 
 

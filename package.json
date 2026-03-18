@@ -91,9 +91,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "MKP SupportE",
-      "license": "LICENSE",
-      "include": "build/installer.nsh"
+      "shortcutName": "MKP SupportE"
     }
   }
 }

@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MKP 后处理过程</title>
+  <link rel="stylesheet" href="assets/css/tailwind-compiled.css">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    :root {
+      --report-bg: #091116;
+      --report-panel: rgba(10, 22, 28, 0.88);
+      --report-panel-strong: rgba(12, 27, 35, 0.96);
+      --report-line: rgba(126, 177, 191, 0.16);
+      --report-accent: #52c7d8;
+      --report-accent-soft: rgba(82, 199, 216, 0.14);
+      --report-success: #40c996;
+      --report-warning: #f2a74b;
+      --report-danger: #ef6b73;
+      --report-text: #ecf8fb;
+      --report-muted: #9ab5bb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: var(--report-text);
+      background:
+        radial-gradient(circle at top left, rgba(54, 134, 151, 0.18), transparent 38%),
+        radial-gradient(circle at top right, rgba(63, 111, 198, 0.12), transparent 32%),
+        linear-gradient(180deg, #0a1418 0%, #081015 100%);
+      overflow: hidden;
+    }
+
+    .report-root {
+      position: relative;
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    .report-root::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--report-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--report-line) 1px, transparent 1px);
+      background-size: 28px 28px;
+      opacity: 0.18;
+      pointer-events: none;
+    }
+
+    .report-shell {
+      position: relative;
+      z-index: 1;
+      min-height: calc(100vh - 36px);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border-radius: 24px;
+      border: 1px solid rgba(116, 155, 164, 0.18);
+      background: linear-gradient(180deg, rgba(9, 20, 24, 0.98) 0%, rgba(9, 17, 22, 0.92) 100%);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .report-topbar,
+    .report-summary,
+    .report-actions,
+    .report-metrics,
+    .detail-toolbar,
+    .detail-metadata {
+      display: flex;
+      gap: 12px;
+    }
+
+    .report-topbar {
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .report-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .report-brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(82, 199, 216, 0.22), rgba(82, 199, 216, 0.04));
+      border: 1px solid rgba(82, 199, 216, 0.22);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: var(--report-accent);
+      letter-spacing: 0.08em;
+      flex-shrink: 0;
+    }
+
+    .report-brand-copy {
+      min-width: 0;
+    }
+
+    .report-brand-copy small {
+      display: block;
+      color: var(--report-muted);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .report-brand-copy strong {
+      display: block;
+      font-size: 16px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      border: 1px solid transparent;
+      flex-shrink: 0;
+    }
+
+    .status-running {
+      background: rgba(82, 199, 216, 0.14);
+      color: var(--report-accent);
+      border-color: rgba(82, 199, 216, 0.22);
+    }
+
+    .status-completed {
+      background: rgba(64, 201, 150, 0.14);
+      color: var(--report-success);
+      border-color: rgba(64, 201, 150, 0.24);
+    }
+
+    .status-failed {
+      background: rgba(239, 107, 115, 0.14);
+      color: var(--report-danger);
+      border-color: rgba(239, 107, 115, 0.24);
+    }
+
+    .report-summary {
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .report-summary-copy {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .report-summary-copy h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .report-summary-copy p {
+      margin: 8px 0 0;
+      color: var(--report-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .report-actions {
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      flex-shrink: 0;
+    }
+
+    .report-btn {
+      appearance: none;
+      border: 1px solid rgba(108, 148, 157, 0.22);
+      background: rgba(16, 31, 37, 0.82);
+      color: var(--report-text);
+      border-radius: 14px;
+      padding: 11px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    }
+
+    .report-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(82, 199, 216, 0.4);
+      background: rgba(17, 36, 43, 0.96);
+    }
+
+    .report-btn-primary {
+      background: linear-gradient(135deg, rgba(82, 199, 216, 0.22), rgba(82, 199, 216, 0.08));
+      border-color: rgba(82, 199, 216, 0.34);
+      color: #e9fdff;
+    }
+
+    .report-btn[disabled] {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .report-metrics {
+      flex-wrap: wrap;
+    }
+
+    .metric-card,
+    .detail-card,
+    .step-card {
+      border-radius: 18px;
+      border: 1px solid rgba(116, 155, 164, 0.14);
+      background: linear-gradient(180deg, var(--report-panel-strong) 0%, var(--report-panel) 100%);
+      backdrop-filter: blur(14px);
+    }
+
+    .metric-card {
+      min-width: 140px;
+      flex: 1 1 0;
+      padding: 14px 16px;
+    }
+
+    .metric-label {
+      font-size: 11px;
+      color: var(--report-muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      margin-top: 10px;
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      word-break: break-all;
+    }
+
+    .metric-sub {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--report-muted);
+      line-height: 1.5;
+    }
+
+    .detail-panel {
+      display: none;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    .detail-panel.is-visible {
+      display: flex;
+    }
+
+    .detail-toolbar {
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .view-toggle-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px;
+      border-radius: 16px;
+      background: rgba(16, 30, 36, 0.86);
+      border: 1px solid rgba(116, 155, 164, 0.16);
+    }
+
+    .view-toggle-btn {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--report-muted);
+      border-radius: 12px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .view-toggle-btn.is-active {
+      color: #ebfdff;
+      background: rgba(82, 199, 216, 0.18);
+    }
+
+    .detail-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .detail-metadata {
+      flex-wrap: wrap;
+    }
+
+    .detail-card {
+      flex: 1 1 260px;
+      padding: 14px 16px;
+      min-width: 220px;
+    }
+
+    .detail-card strong {
+      display: block;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--report-muted);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .detail-card code,
+    .step-technical pre {
+      font-family: "Cascadia Code", "Consolas", monospace;
+    }
+
+    .detail-card code {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #d7f9fd;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .steps-container {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding-right: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .step-card {
+      padding: 14px 16px;
+    }
+
+    .step-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .step-index {
+      width: 28px;
+      height: 28px;
+      border-radius: 12px;
+      background: rgba(82, 199, 216, 0.16);
+      color: var(--report-accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    .step-kind {
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--report-muted);
+      background: rgba(116, 155, 164, 0.12);
+      border: 1px solid rgba(116, 155, 164, 0.16);
+      flex-shrink: 0;
+      text-transform: uppercase;
+    }
+
+    .step-body {
+      font-size: 13px;
+      line-height: 1.7;
+      color: #d8eef2;
+    }
+
+    .step-technical pre {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(4, 12, 15, 0.88);
+      color: #c6f5ff;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid rgba(82, 199, 216, 0.12);
+    }
+
+    .step-data {
+      margin-top: 10px;
+    }
+
+    .step-data pre {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(8, 15, 19, 0.86);
+      color: #9fd7df;
+      font-size: 11px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid rgba(116, 155, 164, 0.12);
+    }
+
+    .feedback {
+      min-height: 20px;
+      font-size: 12px;
+      color: var(--report-muted);
+    }
+
+    .feedback.is-success {
+      color: var(--report-success);
+    }
+
+    .feedback.is-error {
+      color: var(--report-danger);
+    }
+  </style>
+</head>
+<body>
+  <div class="report-root">
+    <div class="report-shell">
+      <div class="report-topbar">
+        <div class="report-brand">
+          <div class="report-brand-mark">MKP</div>
+          <div class="report-brand-copy">
+            <small>Post-processing</small>
+            <strong id="reportWindowTitle">后处理进行中</strong>
+          </div>
+        </div>
+        <div id="statusBadge" class="status-badge status-running">运行中</div>
+      </div>
+
+      <div class="report-summary">
+        <div class="report-summary-copy">
+          <h1 id="summaryTitle">正在扫描支撑面与熨烫路径</h1>
+          <p id="summaryText">窗口会在处理完成后自动刷新结果；如果不点查看，默认会在 10 秒后自动关闭。</p>
+          <div id="countdownText" class="feedback">处理中...</div>
+        </div>
+        <div class="report-actions">
+          <button id="viewToggleButton" class="report-btn report-btn-primary" type="button">查看详情</button>
+          <button id="closeButton" class="report-btn" type="button">关闭</button>
+        </div>
+      </div>
+
+      <div class="report-metrics">
+        <div class="metric-card">
+          <div class="metric-label">注入段数</div>
+          <div id="metricInjected" class="metric-value">0</div>
+          <div class="metric-sub">有效支撑段或支撑面熨烫段</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">扫描结论</div>
+          <div id="metricScan" class="metric-value">等待中</div>
+          <div id="metricScanSub" class="metric-sub">支撑面、熨烫、跳过统计</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">耗时</div>
+          <div id="metricDuration" class="metric-value">--</div>
+          <div class="metric-sub">单位：秒</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">输出文件</div>
+          <div id="metricOutput" class="metric-value">待生成</div>
+          <div id="metricOutputSub" class="metric-sub">处理后 G-code</div>
+        </div>
+      </div>
+
+      <div id="detailPanel" class="detail-panel">
+        <div class="detail-toolbar">
+          <div class="view-toggle-group">
+            <button id="humanViewButton" class="view-toggle-btn is-active" type="button">普通步骤</button>
+            <button id="technicalViewButton" class="view-toggle-btn" type="button">代码步骤</button>
+          </div>
+          <div class="detail-actions">
+            <button id="exportTraceButton" class="report-btn" type="button">导出步骤（代码）</button>
+            <button id="exportGcodeButton" class="report-btn" type="button">导出 G-code</button>
+          </div>
+        </div>
+
+        <div class="detail-metadata">
+          <div class="detail-card">
+            <strong>输入 / 输出</strong>
+            <code id="pathSummary">等待后处理状态...</code>
+          </div>
+          <div class="detail-card">
+            <strong>解析统计</strong>
+            <code id="summaryCode">等待后处理状态...</code>
+          </div>
+        </div>
+
+        <div id="stepsContainer" class="steps-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/postprocess-report.js"></script>
+</body>
+</html>
