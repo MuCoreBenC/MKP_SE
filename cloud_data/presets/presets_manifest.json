@@ -1,0 +1,84 @@
+{
+  "_comment": "【重要提醒】这里的 version 是这份总清单的版本号（每次新增或修改预设时 +1）。和机器型号无关！不要和预设里的 version 搞混！",
+  "version": "1.0.0",
+  "presets": [
+    {
+      "id": "a1",
+      "type": "standard",
+      "file": "a1_standard_v3.0.0-r1.json",
+      "version": "3.0.0-r1",
+      "description": "标准版初始参数",
+      "releaseNotes": [
+        "同步原版A1v3标准版初始参数"
+      ],
+      "lastModified": "2026-03-01"
+    },
+    {
+      "id": "a1",
+      "type": "quick",
+      "file": "a1_quick_v3.0.0-r1.json",
+      "version": "3.0.0-r1",
+      "description": "快拆版初始参数",
+      "releaseNotes": [
+        "A1v3快拆版初始参数"
+      ],
+      "lastModified": "2026-03-01"
+    },
+    {
+      "id": "a1mini",
+      "type": "standard",
+      "file": "a1mini_standard_v3.0.0-r1.json",
+      "version": "3.0.0-r1",
+      "description": "标准版初始参数",
+      "releaseNotes": [
+        "同步原版A1 miniv3标准版初始参数"
+      ],
+      "lastModified": "2026-03-01"
+    },
+     {
+      "id": "a1mini",
+      "type": "quick",
+      "file": "a1mini_quick_v3.0.0-r1.json",
+      "version": "3.0.0-r1",
+      "description": "快拆版初始参数",
+      "releaseNotes": [
+        "A1 miniv3快拆参数"
+      ],
+      "lastModified": "2026-03-01"
+    },
+    {
+      "id": "p1s",
+      "type": "lite",
+      "file": "p1_lite_v2.4.2-r1.json",
+      "version": "2.4.2",
+      "description": "lite版初始参数",
+      "releaseNotes": [
+        "同步原版P1v2.4.2初始参数"
+      ],
+      "lastModified": "2026-03-01"
+    },
+    {
+      "id": "x1",
+      "type": "lite",
+      "file": "x1_lite_v2.4.2-r1.json",
+      "version": "2.4.2",
+      "description": "lite版初始参数",
+      "releaseNotes": [
+        "同步原版X1v2.4.2初始参数"
+      ],
+      "lastModified": "2026-03-01"
+    },
+    {
+      "id": "s1c",
+      "type": "standard",
+      "file": "s1c_lite_v1.2.0-r1.json",
+      "version": "1.2.0",
+      "description": "标准版初始参数",
+      "releaseNotes": [
+        "同步原版S1cv1.2.0初始参数"
+      ],
+      "lastModified": "2026-03-01"
+    }
+  ],
+  "lastUpdated": "2026-03-01"
+}

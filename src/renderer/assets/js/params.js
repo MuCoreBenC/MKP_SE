@@ -9,6 +9,28 @@ const PARAM_GROUP_META = {
   advanced: { title: '扩展参数', desc: '当前 JSON 中存在但未分类的高级字段。', icon: 'advanced' }
 };
 
+const PARAM_TEMPLATE_FIELD_ORDER = [
+  'templates.wipingGcode',
+  'templates.towerBaseLayerGcode'
+];
+
+const PARAM_TEMPLATE_DEFAULTS = {
+  'templates.wipingGcode': [
+    '; MKP wiping tower template',
+    'G92 E0',
+    'G1 X20 Y20 E0.8',
+    'G1 X24 Y20 E0.4',
+    'G92 E0'
+  ],
+  'templates.towerBaseLayerGcode': [
+    '; MKP tower base template',
+    'G92 E0',
+    'G1 X20 Y20 E1.0',
+    'G1 X25 Y20 E0.5',
+    'G92 E0'
+  ]
+};
+
 const PARAM_FIELD_META = {
   version: { label: '预设版本', desc: '当前预设的真实版本号，下载页“最新”也会依赖它。', group: 'meta' },
   printer: { label: '适用机型', desc: '当前预设绑定的机型标识。', group: 'meta' },
@@ -29,7 +51,21 @@ const PARAM_FIELD_META = {
   'wiping.iron_apply_flag': { label: '缩小涂胶区域', desc: '原版注释为最小化涂胶区域，通常用于配合熨烫表面优化支撑面表现。', type: 'boolean', group: 'wiping' },
   'wiping.user_dry_time': { label: '额外干燥时间', desc: '在流程里增加等待干燥时间，单位为秒。', unit: '秒', group: 'wiping' },
   'wiping.force_thick_bridge_flag': { label: '强制厚桥', desc: '原版注释为 Force Thick Bridge，常用于桥接厚度相关兼容策略。', type: 'boolean', group: 'wiping' },
-  'wiping.support_extrusion_multiplier': { label: '支撑挤出倍率', desc: '调整支撑相关挤出倍率，影响支撑密度和表面表现。', group: 'wiping' }
+  'wiping.support_extrusion_multiplier': { label: '支撑挤出倍率', desc: '调整支撑相关挤出倍率，影响支撑密度和表面表现。', group: 'wiping' },
+  'templates.wipingGcode': {
+    label: '擦嘴塔路径模板',
+    desc: '底层 JS engine 使用的 templates.wipingGcode。通常无需修改，只有想覆盖默认擦嘴塔路径时再展开编辑。',
+    type: 'gcode',
+    group: 'advancedTemplates',
+    valueShape: 'stringArray'
+  },
+  'templates.towerBaseLayerGcode': {
+    label: '擦嘴塔首层模板',
+    desc: '底层 JS engine 使用的 templates.towerBaseLayerGcode。用于生成擦嘴塔首层路径，修改后会随当前 preset 保存。',
+    type: 'gcode',
+    group: 'advancedTemplates',
+    valueShape: 'stringArray'
+  }
 };
 
 const PARAM_MENU_ACTIONS = [
@@ -68,7 +104,33 @@ function cloneParamData(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function splitParamMultilineArray(value) {
+  const text = normalizeGcodeText(Array.isArray(value) ? value.join('\n') : String(value || ''));
+  return text ? text.split('\n') : [];
+}
+
+function isParamStringArrayField(key) {
+  return getParamFieldMeta(key).valueShape === 'stringArray';
+}
+
+function getParamEditorTextValue(key, value) {
+  if (isParamStringArrayField(key)) {
+    return Array.isArray(value) ? normalizeGcodeText(value.join('\n')) : normalizeGcodeText(value);
+  }
+
+  if (typeof value === 'string') {
+    return key.includes('gcode') ? normalizeGcodeText(value) : value.replace(/\r\n/g, '\n');
+  }
+
+  if (value == null) return '';
+  return String(value);
+}
+
 function normalizeParamValueByKey(key, value) {
+  if (isParamStringArrayField(key)) {
+    return splitParamMultilineArray(value);
+  }
+
   if (typeof value === 'string') {
     return key.includes('gcode') ? normalizeGcodeText(value) : value.replace(/\r\n/g, '\n');
   }
@@ -151,7 +213,7 @@ function collectParamFullStateFromDom() {
       flatUpdates[key] = input.checked;
       return;
     }
-    flatUpdates[key] = coerceParamValue(input.value, input);
+    flatUpdates[key] = coerceParamValue(input.value, input, key);
   });
 
   document.querySelectorAll('[data-gcode-mode]').forEach((shell) => {
@@ -159,7 +221,7 @@ function collectParamFullStateFromDom() {
     if (!key) return;
     if (shell.dataset.gcodeMode === 'structured') syncStructuredToRaw(shell);
     const rawInput = shell.querySelector('[data-gcode-raw]');
-    flatUpdates[key] = normalizeGcodeText(rawInput ? rawInput.value : '');
+    flatUpdates[key] = coerceParamValue(rawInput ? rawInput.value : '', rawInput, key);
   });
 
   return normalizeFlatState(flatUpdates);
@@ -402,16 +464,7 @@ function restoreParamFocus(focus) {
 }
 
 function collectParamSnapshotFromDom() {
-  const fullState = collectParamFullStateFromDom();
-  const textUpdates = {};
-  Object.keys(fullState).forEach((key) => {
-    const value = fullState[key];
-    if (typeof value === 'string' || typeof value === 'number') {
-      textUpdates[key] = value;
-    }
-  });
-
-  return createParamSnapshot(textUpdates, {}, captureParamFocus());
+  return createParamSnapshot(collectParamFullStateFromDom(), collectParamModesFromDom(), captureParamFocus());
 }
 
 function rememberParamSnapshot(options = {}) {
@@ -467,7 +520,7 @@ function applyParamSnapshotToDom(snapshot, options = {}) {
       if (input.type === 'checkbox') return;
       const value = snapshot.flat[key];
       if (value === undefined) return;
-      input.value = value == null ? '' : String(value);
+      input.value = getParamEditorTextValue(key, value);
     });
 
     document.querySelectorAll('[data-gcode-mode]').forEach((shell) => {
@@ -475,7 +528,7 @@ function applyParamSnapshotToDom(snapshot, options = {}) {
       const rawInput = shell.querySelector('[data-gcode-raw]');
 
       if (rawInput && snapshot.flat[key] !== undefined) {
-        rawInput.value = normalizeGcodeText(snapshot.flat[key]);
+        rawInput.value = getParamEditorTextValue(key, snapshot.flat[key]);
       }
 
       syncRawToStructured(shell, { resetHistory: false });
@@ -499,7 +552,7 @@ function applyFullParamStateToDom(flatState = {}) {
         return;
       }
 
-      input.value = flatState[key] == null ? '' : String(flatState[key]);
+      input.value = getParamEditorTextValue(key, flatState[key]);
     });
 
     document.querySelectorAll('[data-gcode-mode]').forEach((shell) => {
@@ -507,7 +560,7 @@ function applyFullParamStateToDom(flatState = {}) {
       if (!(key in flatState)) return;
       const rawInput = shell.querySelector('[data-gcode-raw]');
       if (rawInput) {
-        rawInput.value = normalizeGcodeText(flatState[key]);
+        rawInput.value = getParamEditorTextValue(key, flatState[key]);
       }
       syncRawToStructured(shell, { resetHistory: false });
     });
@@ -622,6 +675,10 @@ function getGroupForField(key) {
   if (key.startsWith('toolhead.')) return 'toolhead';
   if (key.startsWith('wiping.')) return 'wiping';
   return 'advanced';
+}
+
+function isAdvancedTemplateField(key) {
+  return PARAM_TEMPLATE_FIELD_ORDER.includes(key);
 }
 
 function inferInputType(key, value) {
@@ -817,7 +874,7 @@ function renderGcodeLineRow(line, index) {
 }
 
 function createGcodeField(key, value, meta) {
-  const rawText = normalizeGcodeText(value);
+  const rawText = getParamEditorTextValue(key, value);
   const lines = rawText.split('\n');
   const renderLines = lines.length > 0 ? lines : [''];
 
@@ -853,6 +910,8 @@ function buildParamGroupSections(flatData) {
   const groups = { meta: [], toolhead: [], wiping: [], mount: [], unmount: [], advanced: [] };
 
   Object.keys(flatData).forEach((key) => {
+    if (isAdvancedTemplateField(key)) return;
+
     const value = flatData[key];
     const meta = getParamFieldMeta(key);
     const type = inferInputType(key, value);
@@ -893,6 +952,151 @@ function renderParamGroup(groupKey, cards) {
       </div>
     </section>
   `;
+}
+
+function resolveTemplateFieldValue(flatData, templateKey) {
+  if (flatData && Object.prototype.hasOwnProperty.call(flatData, templateKey)) {
+    return flatData[templateKey];
+  }
+  return cloneParamData(PARAM_TEMPLATE_DEFAULTS[templateKey] || []);
+}
+
+function buildRenderableParamState(flatData = {}) {
+  const injectedFlat = { ...flatData };
+
+  PARAM_TEMPLATE_FIELD_ORDER.forEach((templateKey) => {
+    injectedFlat[templateKey] = normalizeParamValueByKey(templateKey, resolveTemplateFieldValue(flatData, templateKey));
+  });
+
+  return {
+    flat: normalizeFlatState(injectedFlat)
+  };
+}
+
+function countParamLines(key, value) {
+  const text = getParamEditorTextValue(key, value).trim();
+  return text ? text.split('\n').length : 0;
+}
+
+function buildDiagnosticsPayload(flatData, presetPath, fileName) {
+  const presetData = unflattenObject(flatData);
+  const wipingTemplate = normalizeParamValueByKey('templates.wipingGcode', flatData['templates.wipingGcode']);
+  const towerBaseTemplate = normalizeParamValueByKey('templates.towerBaseLayerGcode', flatData['templates.towerBaseLayerGcode']);
+
+  return {
+    source: {
+      fileName,
+      presetPath,
+      fieldCount: Object.keys(flatData).length,
+      customName: presetData._custom_name || null,
+      version: presetData.version || null,
+      printer: presetData.printer || null,
+      type: presetData.type || null
+    },
+    toolhead: {
+      speedLimit: presetData.toolhead?.speed_limit ?? null,
+      offset: {
+        x: presetData.toolhead?.offset?.x ?? null,
+        y: presetData.toolhead?.offset?.y ?? null,
+        z: presetData.toolhead?.offset?.z ?? null
+      },
+      customMountGcodeLines: countParamLines('toolhead.custom_mount_gcode', flatData['toolhead.custom_mount_gcode']),
+      customUnmountGcodeLines: countParamLines('toolhead.custom_unmount_gcode', flatData['toolhead.custom_unmount_gcode'])
+    },
+    wiping: {
+      haveWipingComponents: Boolean(presetData.wiping?.have_wiping_components),
+      wiperX: presetData.wiping?.wiper_x ?? null,
+      wiperY: presetData.wiping?.wiper_y ?? null,
+      wipeTowerPrintSpeed: presetData.wiping?.wipetower_speed ?? null,
+      nozzleCoolingFlag: Boolean(presetData.wiping?.nozzle_cooling_flag),
+      ironApplyFlag: Boolean(presetData.wiping?.iron_apply_flag),
+      userDryTime: presetData.wiping?.user_dry_time ?? null,
+      forceThickBridgeFlag: Boolean(presetData.wiping?.force_thick_bridge_flag),
+      supportExtrusionMultiplier: presetData.wiping?.support_extrusion_multiplier ?? null
+    },
+    templates: {
+      wipingGcode: wipingTemplate,
+      towerBaseLayerGcode: towerBaseTemplate
+    }
+  };
+}
+
+function renderParamDisclosureSection(section) {
+  if (!section?.content) return '';
+
+  return `
+    <details class="params-disclosure params-disclosure-subtle" data-disclosure-id="${escapeParamHtml(section.id || '')}">
+      <summary class="params-disclosure-summary">
+        <div class="params-disclosure-copy">
+          <div class="params-disclosure-title-row">
+            <span class="params-disclosure-title">${escapeParamHtml(section.title || '')}</span>
+            ${section.badge ? `<span class="params-disclosure-badge">${escapeParamHtml(section.badge)}</span>` : ''}
+          </div>
+          <p class="params-disclosure-desc">${escapeParamHtml(section.desc || '')}</p>
+        </div>
+        <span class="params-disclosure-chevron" aria-hidden="true">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 9l6 6 6-6"></path>
+          </svg>
+        </span>
+      </summary>
+      <div class="params-disclosure-body">
+        ${section.content}
+      </div>
+    </details>
+  `;
+}
+
+function buildAdvancedTemplateDisclosure(flatData) {
+  const cards = PARAM_TEMPLATE_FIELD_ORDER.map((key) => {
+    return createGcodeField(key, flatData[key], getParamFieldMeta(key));
+  });
+
+  return {
+    id: 'advanced-templates',
+    title: '高级模板编辑器',
+    desc: '只在需要覆盖底层默认模板时再展开。普通调参通常不需要动这里。',
+    badge: `${PARAM_TEMPLATE_FIELD_ORDER.length} 项模板`,
+    content: `
+      <div class="params-disclosure-note">
+        修改后会随当前 preset 一起保存到 JSON 的 <code>templates.*</code> 字段，用来覆盖 JS engine 内置模板。
+      </div>
+      <div class="params-group-list params-group-list-compact">
+        ${cards.join('')}
+      </div>
+    `
+  };
+}
+
+function buildDiagnosticsDisclosure(flatData, presetPath, fileName) {
+  const payload = buildDiagnosticsPayload(flatData, presetPath, fileName);
+  const metrics = [
+    { label: '字段总数', value: String(payload.source.fieldCount) },
+    { label: '挂载脚本', value: `${payload.toolhead.customMountGcodeLines} 行` },
+    { label: '收起脚本', value: `${payload.toolhead.customUnmountGcodeLines} 行` },
+    { label: '模板行数', value: `${payload.templates.wipingGcode.length} / ${payload.templates.towerBaseLayerGcode.length}` }
+  ];
+
+  return {
+    id: 'diagnostics',
+    title: '诊断 / 解析结果',
+    desc: '快速查看当前 preset 被参数页和 JS engine 读取后的关键结果，方便排查字段或模板是否生效。',
+    badge: '只读',
+    content: `
+      <div class="params-disclosure-note">
+        这里展示的是当前页面解析后的摘要和 JSON 预览，不会直接修改文件内容。
+      </div>
+      <div class="params-diagnostics-grid">
+        ${metrics.map((item) => `
+          <div class="params-diagnostic-card">
+            <div class="params-diagnostic-label">${escapeParamHtml(item.label)}</div>
+            <div class="params-diagnostic-value">${escapeParamHtml(item.value)}</div>
+          </div>
+        `).join('')}
+      </div>
+      <pre class="params-diagnostics-code"><code>${escapeParamHtml(JSON.stringify(payload, null, 2))}</code></pre>
+    `
+  };
 }
 
 function renumberGcodeRows(editor) {
@@ -1097,31 +1301,42 @@ async function renderDynamicParamsPage() {
   }
 
   const diskFlat = normalizeFlatState(flattenObject(preset.data));
-  const diskSnapshot = createParamSnapshot(diskFlat);
+  const diskRenderState = buildRenderableParamState(diskFlat);
+  const diskSnapshot = createParamSnapshot(diskRenderState.flat);
   let store = getParamStore(presetPath);
   if (!store) {
-    store = ensureParamStore(presetPath, diskFlat);
+    store = ensureParamStore(presetPath, diskRenderState.flat);
   } else if (!store.dirty && serializeParamSnapshot(store.history[store.index]) !== serializeParamSnapshot(diskSnapshot)) {
     store.history = [diskSnapshot];
     store.index = 0;
     store.savedSerialized = serializeParamSnapshot(diskSnapshot);
-    store.savedFullSerialized = serializeParamFullState(diskFlat);
+    store.savedFullSerialized = serializeParamFullState(diskRenderState.flat);
     store.dirty = false;
     store.lastFocus = cloneParamFocus(diskSnapshot.focus);
   }
 
   paramEditorSession.activePath = presetPath;
-  const activeSnapshot = store.history[store.index];
-  const groups = buildParamGroupSections(activeSnapshot.flat);
+  const currentSnapshot = store.history[store.index];
+  const activeSnapshot = createParamSnapshot(
+    buildRenderableParamState(currentSnapshot.flat).flat,
+    currentSnapshot.modes,
+    currentSnapshot.focus
+  );
+  store.history[store.index] = activeSnapshot;
+
+  const renderState = buildRenderableParamState(activeSnapshot.flat);
+  const groups = buildParamGroupSections(renderState.flat);
   container.innerHTML = `
     <div class="col-span-full params-shell">
-      ${buildParamsSummary(unflattenObject(activeSnapshot.flat), fileName)}
+      ${buildParamsSummary(unflattenObject(renderState.flat), fileName)}
       ${renderParamGroup('meta', groups.meta)}
       ${renderParamGroup('toolhead', groups.toolhead)}
       ${renderParamGroup('wiping', groups.wiping)}
       ${renderParamGroup('mount', groups.mount)}
       ${renderParamGroup('unmount', groups.unmount)}
       ${renderParamGroup('advanced', groups.advanced)}
+      ${renderParamDisclosureSection(buildAdvancedTemplateDisclosure(renderState.flat))}
+      ${renderParamDisclosureSection(buildDiagnosticsDisclosure(renderState.flat, presetPath, fileName))}
     </div>
   `;
 
@@ -1129,13 +1344,17 @@ async function renderDynamicParamsPage() {
   updateParamDirtyState(store);
 }
 
-function coerceParamValue(rawValue, input) {
-  if (input.type === 'checkbox') return input.checked;
+function coerceParamValue(rawValue, input, key = '') {
+  if (input?.type === 'checkbox') return input.checked;
+
+  if (isParamStringArrayField(key)) {
+    return splitParamMultilineArray(rawValue);
+  }
 
   const value = String(rawValue ?? '');
   if (value === 'true') return true;
   if (value === 'false') return false;
-  if (input.type === 'number' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);
+  if (input?.type === 'number' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);
   if ((value.startsWith('{') || value.startsWith('[')) && value.trim()) {
     try {
       return JSON.parse(value);
@@ -1285,8 +1504,9 @@ async function demoRestoreDefaults() {
     }
 
     const restoredSnapshot = createParamSnapshot(flattenObject(defaultData), collectParamModesFromDom());
+    const isParamsVisible = !document.getElementById('page-params')?.classList.contains('hidden');
     pushParamSnapshotToHistory(restoredSnapshot, { markSaved: true });
-    if (!document.getElementById('page-params')?.classList.contains('hidden')) {
+    if (isParamsVisible) {
       applyParamSnapshotToDom(getActiveParamStore()?.history[getActiveParamStore()?.index], { restoreFocus: false });
     }
 
@@ -1296,7 +1516,9 @@ async function demoRestoreDefaults() {
     if (typeof window.broadcastPresetMutation === 'function') {
       window.broadcastPresetMutation({ reason: 'params-restore-defaults', path: presetPath });
     }
-    await renderDynamicParamsPage();
+    if (isParamsVisible) {
+      await renderDynamicParamsPage();
+    }
     await MKPModal.alert({ title: '已恢复', msg: `已按${sourceLabel}恢复为 ${restoredFileName} 的初始内容。`, type: 'success' });
   } catch (error) {
     await MKPModal.alert({ title: '恢复失败', msg: error.message, type: 'error' });

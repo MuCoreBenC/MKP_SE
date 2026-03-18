@@ -59,4 +59,50 @@ describe('calibration context view bridge', () => {
       presetPath: targetWindow.__getActivePresetView__?.()?.absolutePath
     });
   });
+
+  it('switches calibration preset path with the selected version context instead of keeping the previous preset path', () => {
+    const targetWindow = createWindowStub() as Window & typeof globalThis;
+    targetWindow.printersByBrand = {
+      bambu: [
+        {
+          id: 'a1',
+          name: 'Bambu Lab A1',
+          shortName: 'A1',
+          image: 'assets/images/a1.webp',
+          favorite: true,
+          supportedVersions: ['standard', 'quick'],
+          defaultPresets: {
+            standard: 'a1_standard_v3.0.0-r1.json',
+            quick: 'a1_quick_v3.0.0-r1.json'
+          }
+        }
+      ]
+    } as typeof targetWindow.printersByBrand;
+
+    const runtime = mountModernRuntime(targetWindow);
+
+    runtime.container.stores.userConfigStore.setAppliedPreset('a1', 'standard', 'a1_standard_v3.0.0-r1.json');
+    runtime.container.stores.userConfigStore.setAppliedPreset('a1', 'quick', 'a1_quick_v3.0.0-r1.json');
+
+    expect(targetWindow.__getCalibrationContextView__?.()).toMatchObject({
+      versionType: 'standard',
+      presetPath: 'a1_standard_v3.0.0-r1.json'
+    });
+
+    targetWindow.__syncLegacyContextToModern__?.({
+      brandId: 'bambu',
+      printerId: 'a1',
+      versionType: 'quick'
+    });
+
+    expect(targetWindow.__getDownloadContextView__?.()?.selectedVersionType).toBe('quick');
+    expect(targetWindow.__getCalibrationContextView__?.()).toMatchObject({
+      printerId: 'a1',
+      versionType: 'quick',
+      presetPath: 'a1_quick_v3.0.0-r1.json'
+    });
+    expect(targetWindow.__getCalibrationContextView__?.()?.presetPath).toBe(
+      targetWindow.__getParamsPresetView__?.()?.absolutePath
+    );
+  });
 });

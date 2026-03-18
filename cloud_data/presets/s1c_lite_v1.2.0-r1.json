@@ -1,0 +1,22 @@
+{
+  "version": "1.2.0-r1",
+  "printer": "s1c",
+  "type": "lite",
+  "_comment": "release_time: 2026-03-01 00:00:00",
+  "toolhead": {
+    "speed_limit": 140,
+    "offset": {
+      "x": 38,
+      "y": 33,
+      "z": 6
+    },
+    "custom_mount_gcode": "L803;此处使喷嘴降温\nG92 E0;挤出机归零\nM106 P1 S255 \n;M106 P2 S255\nG1 E-10;长回抽\nG92 E0\nL801\nM204 S10000  ;10000mm/s2\nG1 F30000\nG1 X3.7 Y90 ;到驻点\nG1 F5000 ;减速\nG1 Y122 ;挂载\nG1 F2400 ;40mm/s\nM204 S2000 ;2000mm/s2\nG1 Y90\nG1 X6 F5000 ;83mm/s\nM204 S10000  ;10000mm/s2\n",
+    "custom_unmount_gcode": "G92 E0\nG1 F30000\nG1 X3.7 Y90 ;到驻点\nG1 F10000 ;卸载速度\nG1 F5000\nG1 Y122 ;挂载\nG1 X10 ;推出\nG1 Y90;远离\nG1 F30000\nG1 X70 Y270\nG1 E10.5;填充回抽\nG1 X110\nG1 X70\nG1 X110\nG1 X70\nM106 P1 S[AUTO]\n;M106 P2 S100\n"
+  },
+  "wiping": {
+    "have_wiping_components": false,
+    "wiper_x": 20,
+    "wiper_y": 20,
+    "wipetower_speed": 200
+  }
+}

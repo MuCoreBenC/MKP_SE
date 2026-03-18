@@ -1,0 +1,206 @@
+{
+  "latestVersion": "0.2.10",
+  "updateType": "hot_update",
+  "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.10.zip",
+  "forceUpdate": false,
+  "releaseDate": "2026-03-14",
+  "shortDesc": "测试更新",
+  "canRollback": true,
+  "releaseNotes": [
+    "0.2.10",
+    "测试更新"
+  ],
+  "releaseNotesMarkdown": "# 0.2.10\n\n- 测试更新",
+  "history": [
+    {
+      "version": "0.2.9",
+      "updateType": "hot_update",
+      "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.9.zip",
+      "releaseDate": "2026-03-14",
+      "shortDesc": "修复更新功能小红点提示",
+      "canRollback": true,
+      "releaseNotes": [
+        "0.2.9",
+        "默认关闭自动更新",
+        "默认改用小红点提示",
+        "再次修复热更新功能"
+      ],
+      "releaseNotesMarkdown": "# 0.2.9\n\n- 默认关闭自动更新\n- 默认改用小红点提示\n- 再次修复热更新功能"
+    },
+    {
+      "version": "0.2.8",
+      "updateType": "hot_update",
+      "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.8.zip",
+      "releaseDate": "2026-03-14",
+      "shortDesc": "首页机型页重构与展示优化",
+      "canRollback": true,
+      "releaseNotes": [
+        "0.2.8",
+        "重做首页机型选择布局，品牌改为顶部横向展示",
+        "新增画廊式机型浏览，简约模式支持横向切换",
+        "增加左右切换按钮，浏览机型更方便",
+        "简约模式改为大图优先展示",
+        "详细模式改为信息卡片展示",
+        "优化机型卡片选中效果与整体排版",
+        "减轻机型图片白底与背景突兀的问题",
+        "保留品牌和机型右键菜单功能",
+        "新增显示简称 / 显示全称切换",
+        "修复字母头像与恢复原图的状态判断",
+        "继续拆分首页相关代码，便于后续维护"
+      ],
+      "releaseNotesMarkdown": "# 0.2.8\n\n- 重做首页机型选择布局，品牌改为顶部横向展示\n- 新增画廊式机型浏览，简约模式支持横向切换\n- 增加左右切换按钮，浏览机型更方便\n- 简约模式改为大图优先展示\n- 详细模式改为信息卡片展示\n- 优化机型卡片选中效果与整体排版\n- 减轻机型图片白底与背景突兀的问题\n- 保留品牌和机型右键菜单功能\n- 新增显示简称 / 显示全称切换\n- 修复字母头像与恢复原图的状态判断\n- 继续拆分首页相关代码，便于后续维护"
+    },
+    {
+      "version": "0.2.7",
+      "updateType": "hot_update",
+      "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.7.zip",
+      "releaseDate": "2026-03-14",
+      "shortDesc": "更新中枢重构：统一版本检查、热更新提示与预设回退链路",
+      "canRollback": true,
+      "releaseNotes": [
+        "0.2.7",
+        "重构应用更新中枢，将自动检查、手动检查、版本页渲染与小红点提示统一到同一套状态流，避免重复逻辑导致的显示不同步。",
+        "修复版本控制入口长期不亮红点的问题，新增桌面级红点状态管理，发现新版本后会直接在左侧“版本控制”图标右上角提示。",
+        "调整运行时版本读取逻辑，热更新后优先根据实际安装目录中的 app_manifest.json 判断当前版本，不再强依赖 package.json 才能刷新界面版本。",
+        "补强预设下载链路：云端清单不可用或文件下载失败时，会自动回退到打包资源，避免 manifest 映射不一致时整页显示为空。",
+        "修复 P1S Lite 云端预设匹配失败的问题，统一本地机型 id 与清单 id；同时将 S1C 的展示版本修正为标准版。",
+        "完善校准依赖判断，未选择机型、版本或未应用本地预设时，Z/XY 校准入口会自动禁用并给出明确提示。"
+      ],
+      "releaseNotesMarkdown": "# 0.2.7\n\n- 重构应用更新中枢，将自动检查、手动检查、版本页渲染与小红点提示统一到同一套状态流，避免重复逻辑导致的显示不同步。\n- 修复版本控制入口长期不亮红点的问题，新增桌面级红点状态管理，发现新版本后会直接在左侧“版本控制”图标右上角提示。\n- 调整运行时版本读取逻辑，热更新后优先根据实际安装目录中的 app_manifest.json 判断当前版本，不再强依赖 package.json 才能刷新界面版本。\n- 补强预设下载链路：云端清单不可用或文件下载失败时，会自动回退到打包资源，避免 manifest 映射不一致时整页显示为空。\n- 修复 P1S Lite 云端预设匹配失败的问题，统一本地机型 id 与清单 id；同时将 S1C 的展示版本修正为标准版。\n- 完善校准依赖判断，未选择机型、版本或未应用本地预设时，Z/XY 校准入口会自动禁用并给出明确提示。"
+    },
+    {
+      "version": "0.2.6",
+      "updateType": "hot_update",
+      "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.6.zip",
+      "releaseDate": "2026-03-13",
+      "shortDesc": "架构优化：模块化重构与功能增强",
+      "canRollback": true,
+      "releaseNotes": [
+        "重构 app.js 核心架构为模块化设计，拆分为多个功能独立的子模块，提升代码可维护性与扩展性。",
+        "修复 HTML 页面多处布局与交互问题，包括侧边栏折叠状态记忆、弹窗层级显示等细节。",
+        "强化预设管理功能，新增右键菜单系统，支持快速复制、删除、重命名等操作。",
+        "优化预设加载性能，采用懒加载策略减少启动时间，提升大型预设库的加载速度。",
+        "完善全局错误处理机制，增强应用稳定性，并提供更明确的错误提示。"
+      ]
+    },
+    {
+      "version": "0.2.5",
+      "updateType": "hot_update",
+      "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.5.zip",
+      "releaseDate": "2026-03-13",
+      "shortDesc": "离线优先：高级预设管理与资源链路优化",
+      "canRollback": true,
+      "releaseNotes": [
+        "重构预设加载架构，强化离线优先逻辑，断网环境下也能稳定读取本地清单。",
+        "引入 Windows 路径兼容处理，降低中文路径和空格路径导致的外部软件调用失败概率。",
+        "上线本地预设批量管理能力，支持多选删除、自定义排序与更稳的交互反馈。",
+        "重构预设复制机制，分离底层文件名与展示名，解决副本名称叠加与识别混乱问题。"
+      ]
+    },
+    {
+      "version": "0.2.4",
+      "updateType": "hot_update",
+      "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.4.zip",
+      "releaseDate": "2026-03-12",
+      "shortDesc": "视觉升级：主题细化与交互状态统一",
+      "canRollback": true,
+      "releaseNotes": [
+        "重塑全局主题系统，增强浅色与深色模式下的层次与对比度。",
+        "统一卡片、按钮与弹窗的状态反馈，减少切换时的颜色和动效割裂感。",
+        "优化布局对齐与容器间距，提升桌面端整体观感与稳定性。"
+      ]
+    },
+    {
+      "version": "0.2.3",
+      "updateType": "hot_update",
+      "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.3.zip",
+      "releaseDate": "2026-03-11",
+      "shortDesc": "交互增强：全局弹窗、按钮反馈与错误处理升级",
+      "canRollback": true,
+      "releaseNotes": [
+        "升级全局弹窗体系，统一提示、确认与错误反馈样式。",
+        "优化按钮状态机与异步动画，减少连续点击时的错乱反馈。",
+        "增强关键写入流程的错误提示，让失败原因更容易定位。"
+      ]
+    },
+    {
+      "version": "0.2.2",
+      "updateType": "hot_update",
+      "downloadUrl": "https://gitee.com/MuCoreBenC/MKP_Support_Electron/raw/main/cloud_data/patch_v0.2.2.zip",
+      "releaseDate": "2026-03-10",
+      "shortDesc": "热更新上线：静默下载与应用内补丁覆盖",
+      "canRollback": false,
+      "releaseNotes": [
+        "引入应用内热更新链路，支持拉取补丁包并自动应用。",
+        "加入基础版本检查入口，为后续自动检查和红点提示打底。",
+        "完善更新失败时的错误回传，避免静默失败没有提示。"
+      ]
+    },
+    {
+      "version": "0.2.1",
+      "releaseDate": "2026-03-09",
+      "shortDesc": "体验打磨：路径复制与界面细节优化",
+      "canRollback": false,
+      "releaseNotes": [
+        "优化脚本路径复制交互，减少用户手动复制失败的情况。",
+        "细化基础页面排版与滚动区域安全边距。",
+        "增强离线优先逻辑，只有主动检查更新时才发起网络请求。"
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "releaseDate": "2026-03-08",
+      "shortDesc": "校准升级：可视化 Z 偏移调节正式加入",
+      "canRollback": false,
+      "releaseNotes": [
+        "引入可视化 Z 偏移网格，替代单纯的文本输入方式。",
+        "重构预设解析逻辑，保证偏移参数读取与写回更稳定。",
+        "完善页面动效与交互节奏，提升首次使用体验。"
+      ]
+    },
+    {
+      "version": "0.1.9",
+      "releaseDate": "2026-03-07",
+      "shortDesc": "基础能力增强：弹窗与固定头部体系完善",
+      "canRollback": false,
+      "releaseNotes": [
+        "新增全局弹窗引擎，统一 info、warning、error 三类提示。",
+        "引入固定页头布局体系，提升长页面浏览稳定性。",
+        "修复部分单选组件与按钮样式不一致问题。"
+      ]
+    },
+    {
+      "version": "0.1.5 - 0.1.8",
+      "releaseDate": "2026-03-04",
+      "shortDesc": "版本能力预研：红点系统与自动更新配置雏形",
+      "canRollback": false,
+      "releaseNotes": [
+        "初步接入版本红点提示与设置页更新模式配置。",
+        "探索自动更新与热更新的组合方案，为后续版本中枢做准备。",
+        "优化设置页导航与基本模型文件打开逻辑。"
+      ]
+    },
+    {
+      "version": "0.1.2 - 0.1.4",
+      "releaseDate": "2026-03-01",
+      "shortDesc": "视觉统一：主题色与版本色彩管理",
+      "canRollback": false,
+      "releaseNotes": [
+        "引入主题色管理，支持全局主色调统一切换。",
+        "新增版本专属视觉标识，为标准版、快拆版、Lite 版打基础。",
+        "优化暗色模式下的文本亮度与卡片对比度。"
+      ]
+    },
+    {
+      "version": "0.0.1 - 0.1.1",
+      "releaseDate": "2026-02-27",
+      "shortDesc": "项目起步：基础 Electron 架构与机型选择上线",
+      "canRollback": false,
+      "releaseNotes": [
+        "建立 Electron 主进程、预加载与渲染进程的基础通信结构。",
+        "实现品牌与机型选择页面的基础数据驱动渲染。",
+        "接入后处理脚本路径拼接与复制等核心入口能力。"
+      ]
+    }
+  ]
+}

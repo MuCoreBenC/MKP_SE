@@ -130,4 +130,56 @@ describe('app.js modern runtime smoke', () => {
 
     expect(block).toMatch(/window\.resolveActivePresetFileName\(window, legacyActiveFileName\)/);
   });
+
+  it('re-syncs sidebar brand and model labels after startup restore even when no printer is selected', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('async function init() {'),
+      source.lastIndexOf('Logger.info("[O102] App init done");')
+    );
+
+    expect(block).toMatch(/restoreHomeSelectionSurfaces\(\);/);
+  });
+
+  it('renders the selected brand printer gallery on startup even when restore state has no selected printer', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function restoreHomeSelectionSurfaces() {'),
+      source.lastIndexOf('async function syncUserConfigFromStorage() {')
+    );
+
+    expect(block).toMatch(/const printer = selectedPrinter \? getPrinterObj\(selectedPrinter\) : null;/);
+    expect(block).toMatch(/if \(printer\) \{[\s\S]*selectPrinter\(selectedPrinter, true\);[\s\S]*\} else \{[\s\S]*renderBrands\(\);[\s\S]*renderPrinters\(selectedBrand\);[\s\S]*\}/);
+  });
+
+  it('keeps sidebar summary sync inside the shared home-selection restore helper', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function restoreHomeSelectionSurfaces() {'),
+      source.lastIndexOf('async function syncUserConfigFromStorage() {')
+    );
+
+    expect(block).toMatch(/if \(typeof syncSidebarSelectionState === 'function'\) \{[\s\S]*syncSidebarSelectionState\(\);[\s\S]*\} else if \(typeof updateSidebarVersionBadge === 'function'\)/);
+  });
+
+  it('keeps selected-download refresh behind a shared suspended-persistence helper', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('async function refreshDownloadSurfaceForCurrentSelection() {'),
+      source.lastIndexOf('async function syncActivePresetFromStorage(')
+    );
+
+    expect(block).toMatch(/const printer = selectedPrinter \? getPrinterObj\(selectedPrinter\) : null;/);
+    expect(block).toMatch(/if \(printer && typeof window\.renderDownloadVersions === 'function'\) \{[\s\S]*await withSuspendedUserConfigPersistence\(async \(\) => \{[\s\S]*window\.renderDownloadVersions\(printer\);[\s\S]*\}\);[\s\S]*\}/);
+  });
+
+  it('re-syncs sidebar selection summary when user config is restored from storage events', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('async function syncUserConfigFromStorage() {'),
+      source.lastIndexOf('function bindCrossWindowSync() {')
+    );
+
+    expect(block).toMatch(/restoreHomeSelectionSurfaces\(\);/);
+  });
 });

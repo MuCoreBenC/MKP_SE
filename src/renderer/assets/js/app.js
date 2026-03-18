@@ -498,11 +498,11 @@ function saveUserConfig() {
     ...(previousConfig.appliedReleases || {}),
     ...appliedReleases
   };
-  const resolvedPrinter = selectedPrinter || previousConfig.printer || null;
-  const resolvedBrand = selectedBrand || previousConfig.brand || null;
+  const resolvedPrinter = selectedPrinter ?? null;
+  const resolvedBrand = selectedBrand ?? null;
   const resolvedVersion = resolvePersistedVersionForPrinter(
     resolvedPrinter,
-    selectedVersion || previousConfig.version || null,
+    selectedVersion ?? null,
     { appliedReleases: mergedAppliedReleases }
   );
 
@@ -531,12 +531,12 @@ function loadUserConfig() {
     const saved = localStorage.getItem('mkp_user_config');
     if (saved) {
       const config = JSON.parse(saved);
-      if (config.brand) selectedBrand = config.brand;
-      if (config.printer) selectedPrinter = config.printer;
+      selectedBrand = config.brand || null;
+      selectedPrinter = config.printer || null;
       if (config.appliedReleases) appliedReleases = config.appliedReleases; 
       selectedVersion = resolvePersistedVersionForPrinter(
-        config.printer || selectedPrinter,
-        config.version || selectedVersion,
+        config.printer || null,
+        config.version || null,
         config
       );
 
@@ -665,6 +665,25 @@ function syncThemeSettingsFromStorage() {
   }
 }
 
+function restoreHomeSelectionSurfaces() {
+  const printer = selectedPrinter ? getPrinterObj(selectedPrinter) : null;
+
+  if (printer) {
+    selectPrinter(selectedPrinter, true);
+  } else {
+    renderBrands();
+    renderPrinters(selectedBrand);
+  }
+
+  if (typeof syncSidebarSelectionState === 'function') {
+    syncSidebarSelectionState();
+  } else if (typeof updateSidebarVersionBadge === 'function') {
+    updateSidebarVersionBadge(selectedVersion);
+  }
+
+  return printer;
+}
+
 async function syncUserConfigFromStorage() {
   const previousPrinter = selectedPrinter;
   const previousVersion = selectedVersion;
@@ -672,17 +691,7 @@ async function syncUserConfigFromStorage() {
   loadUserConfig();
 
   await withSuspendedUserConfigPersistence(async () => {
-    const printer = selectedPrinter ? getPrinterObj(selectedPrinter) : null;
-    if (printer) {
-      selectPrinter(selectedPrinter, true);
-    } else {
-      renderBrands();
-      renderPrinters(selectedBrand);
-    }
-
-    if (typeof updateSidebarVersionBadge === 'function') {
-      updateSidebarVersionBadge(selectedVersion);
-    }
+    restoreHomeSelectionSurfaces();
 
     if (previousPrinter !== selectedPrinter || previousVersion !== selectedVersion) {
       if (typeof updateScriptPathDisplay === 'function') {
@@ -699,17 +708,22 @@ async function syncUserConfigFromStorage() {
   });
 }
 
+async function refreshDownloadSurfaceForCurrentSelection() {
+  const printer = selectedPrinter ? getPrinterObj(selectedPrinter) : null;
+
+  if (printer && typeof window.renderDownloadVersions === 'function') {
+    await withSuspendedUserConfigPersistence(async () => {
+      window.renderDownloadVersions(printer);
+    });
+  }
+}
+
 async function syncActivePresetFromStorage(changedKey) {
   const currentKey = `${selectedPrinter || ''}_${selectedVersion || ''}`;
   const shouldRefreshPresetLists = changedKey === `mkp_current_script_${currentKey}`;
 
   if (shouldRefreshPresetLists) {
-    const printer = selectedPrinter ? getPrinterObj(selectedPrinter) : null;
-    if (printer && typeof window.renderDownloadVersions === 'function') {
-      await withSuspendedUserConfigPersistence(async () => {
-        window.renderDownloadVersions(printer);
-      });
-    }
+    await refreshDownloadSurfaceForCurrentSelection();
   }
 
   if (typeof updateScriptPathDisplay === 'function') {
@@ -727,13 +741,7 @@ async function refreshCurrentPresetViews(options = {}) {
     window.presetCache = { path: null, data: null, timestamp: 0 };
   }
 
-  const printer = selectedPrinter ? getPrinterObj(selectedPrinter) : null;
-
-  if (printer && typeof window.renderDownloadVersions === 'function') {
-    await withSuspendedUserConfigPersistence(async () => {
-      window.renderDownloadVersions(printer);
-    });
-  }
+  await refreshDownloadSurfaceForCurrentSelection();
 
   if (typeof updateScriptPathDisplay === 'function') {
     updateScriptPathDisplay();
@@ -3163,10 +3171,9 @@ async function init() {
   if (typeof window.ensureHomeCatalogReady === 'function') {
     await window.ensureHomeCatalogReady();
   }
-  
-  renderBrands();
-  if (selectedPrinter) {
-    selectPrinter(selectedPrinter, true); 
+
+  const restoredPrinter = restoreHomeSelectionSurfaces();
+  if (restoredPrinter && selectedPrinter) {
     Logger.info(`自动加载了上次记忆的机型 | 附加数据: {"printer":"${selectedPrinter}"}`);
 
     const currentKey = `${selectedPrinter}_${selectedVersion}`;

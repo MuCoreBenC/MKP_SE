@@ -65,4 +65,24 @@ describe('active preset view bridge', () => {
 
     expect(targetWindow.__getActivePresetView__?.()).toEqual(targetWindow.__getParamsPresetView__?.());
   });
+
+  it('switches active preset view with the selected version context instead of holding the previous mapping', () => {
+    const targetWindow = createWindowStub();
+    const runtime = mountModernRuntime(targetWindow);
+
+    runtime.container.stores.userConfigStore.setAppliedPreset('a1', 'standard', 'a1_standard_v3.0.0-r1.json');
+    runtime.container.stores.userConfigStore.setAppliedPreset('a1', 'quick', 'a1_quick_v3.0.0-r1.json');
+
+    expect(targetWindow.__getActivePresetView__?.()?.fileName).toBe('a1_standard_v3.0.0-r1.json');
+
+    targetWindow.__syncLegacyContextToModern__?.({
+      brandId: 'bambu',
+      printerId: 'a1',
+      versionType: 'quick'
+    });
+
+    expect(targetWindow.__getDownloadContextView__?.()?.selectedVersionType).toBe('quick');
+    expect(targetWindow.__getActivePresetView__?.()?.fileName).toBe('a1_quick_v3.0.0-r1.json');
+    expect(targetWindow.__getParamsPresetView__?.()?.fileName).toBe('a1_quick_v3.0.0-r1.json');
+  });
 });

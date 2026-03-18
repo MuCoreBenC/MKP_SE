@@ -385,7 +385,7 @@ async function executeBatchDuplicate() {
     await handleDuplicateLocal(
       fileName,
       context.printerData.id,
-      context.versionType,
+      null,
       meta?.realVersion || '0.0.1'
     );
   }
@@ -394,10 +394,13 @@ async function executeBatchDuplicate() {
 }
 
 function editAndApplyLocal(fileName, printerId, versionType) {
-  const printerData = typeof getPrinterObj === 'function' ? getPrinterObj(printerId) : null;
-  if (!printerData) return;
+  const context = getCurrentPresetContext();
+  const printerData = context?.printerData;
+  const resolvedPrinterData = printerData || (typeof getPrinterObj === 'function' ? getPrinterObj(printerId) : null);
+  const resolvedVersionType = versionType || context?.versionType || null;
+  if (!resolvedPrinterData) return;
 
-  handleApplyLocal(fileName, fileName, printerData, versionType, null);
+  handleApplyLocal(fileName, fileName, resolvedPrinterData, resolvedVersionType, null);
   if (typeof navTo === 'function') {
     navTo('page:params');
   }
@@ -560,7 +563,14 @@ async function renderPresetList(printerData, versionType) {
   const dlBtn = document.getElementById('downloadBtn');
   const dlHint = document.getElementById('downloadHintWrapper');
 
-  if (!printerData || !versionType) {
+  if (!printerData) {
+    lastRenderedLocalFiles = [];
+    renderLocalEmptyState('请先选择机型。');
+    updateLocalManagerUI();
+    return;
+  }
+
+  if (!versionType) {
     lastRenderedLocalFiles = [];
     renderLocalEmptyState('请先在上方选择版本类型。');
     updateLocalManagerUI();
@@ -923,6 +933,13 @@ function renderDownloadVersions(printerData) {
 
   renderVersionCards('downloadVersionList', resolvedPrinter, resolvedVersionType, (versionType) => {
     selectedVersion = versionType;
+    if (typeof window.__syncLegacyContextToModern__ === 'function') {
+      window.__syncLegacyContextToModern__({
+        printerId: resolvedPrinter.id,
+        versionType
+      });
+    }
+    renderDownloadVersions(resolvedPrinter);
     saveUserConfig();
     updateSidebarVersionBadge(versionType);
     clearOnlineListUI();
@@ -930,12 +947,26 @@ function renderDownloadVersions(printerData) {
 
   if (!resolvedVersionType) {
     clearOnlineListUI();
+    window.newlyDownloadedFile = null;
+    selectedLocalFiles.clear();
+    localSearchQuery = '';
+    localSortMode = 'custom';
+    draggedCard = null;
+    toggleMultiSelectMode(false);
+    hidePresetContextMenu({ immediate: true });
     renderPresetList(resolvedPrinter, null);
     const dlBtn = document.getElementById('downloadBtn');
     const dlHint = document.getElementById('downloadHintWrapper');
     if (dlBtn) dlBtn.disabled = true;
     if (dlHint) dlHint.style.opacity = '1';
   } else {
+    window.newlyDownloadedFile = null;
+    selectedLocalFiles.clear();
+    localSearchQuery = '';
+    localSortMode = 'custom';
+    draggedCard = null;
+    toggleMultiSelectMode(false);
+    hidePresetContextMenu({ immediate: true });
     renderPresetList(resolvedPrinter, resolvedVersionType);
   }
 
@@ -1125,7 +1156,7 @@ async function handleDownloadOnline(releaseId, fileName, btnElement) {
 
     const context = getCurrentPresetContext();
     const printerData = context?.printerData || (typeof getPrinterObj === 'function' ? getPrinterObj(selectedPrinter) : null);
-    const versionType = context?.versionType || selectedVersion;
+    const versionType = context?.versionType || null;
     if (printerData) {
       await renderPresetList(printerData, versionType);
     }
@@ -1366,7 +1397,7 @@ async function handleRenameLocal(target = presetContextMenuTarget) {
   if (!target) return;
   const context = getCurrentPresetContext();
   const resolvedPrinterData = context?.printerData || target.printerData;
-  const resolvedVersionType = context?.versionType || target.versionType;
+  const resolvedVersionType = context?.versionType || null;
 
   const nextName = await MKPModal.prompt({
     title: '重命名显示名称',
@@ -1409,7 +1440,9 @@ function togglePinnedPreset() {
   const context = getCurrentPresetContext();
   const resolvedPrinterData = context?.printerData || printerData;
   const resolvedVersionType = context?.versionType || versionType;
-  const pinnedSet = getPinnedPresetSet(printerData.id, versionType);
+  const storagePrinterId = resolvedPrinterData?.id || printerData.id;
+  const storageVersionType = resolvedVersionType || versionType;
+  const pinnedSet = getPinnedPresetSet(storagePrinterId, storageVersionType);
 
   if (pinnedSet.has(fileName)) {
     pinnedSet.delete(fileName);
@@ -1417,7 +1450,7 @@ function togglePinnedPreset() {
     pinnedSet.add(fileName);
   }
 
-  savePinnedPresetSet(printerData.id, versionType, pinnedSet);
+  savePinnedPresetSet(storagePrinterId, storageVersionType, pinnedSet);
   renderPresetList(resolvedPrinterData, resolvedVersionType);
 }
 
@@ -1494,7 +1527,7 @@ function bindPresetContextMenu() {
       editAndApplyLocal(
         target.fileName,
         target.printerData.id,
-        target.versionType
+        null
       );
     },
     ctxBtnCopy: (target) => {
@@ -1502,7 +1535,7 @@ function bindPresetContextMenu() {
       handleDuplicateLocal(
         target.fileName,
         target.printerData.id,
-        target.versionType,
+        null,
         target.realVersion
       );
     },

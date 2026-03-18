@@ -262,6 +262,7 @@
                     <p class="text-xs text-gray-500">根据您的打印机配置选择合适的版本</p>
                   </div>
                 </div>
+                <div id="react-download-page-root" class="mb-6"></div>
                 <div id="downloadVersionList" class="flex flex-col gap-3"></div>
               </div>
 
@@ -1243,9 +1244,14 @@
   <script src="assets/js/ui-text.js"></script>
   <script type="module">
     import { mountModernRuntime } from './app/entry/renderer-runtime.ts';
+    import { mountDownloadReactPage } from './react-app/entry/download-page-entry.tsx';
 
     try {
       mountModernRuntime(window);
+      const reactDownloadRoot = document.getElementById('react-download-page-root');
+      if (reactDownloadRoot) {
+        mountDownloadReactPage(reactDownloadRoot);
+      }
     } catch (error) {
       console.error('[MKP Modern Runtime] bootstrap failed', error);
     }

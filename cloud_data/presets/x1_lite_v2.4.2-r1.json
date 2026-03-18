@@ -1,0 +1,27 @@
+{
+  "version": "2.4.2-r1",
+  "printer": "x1",
+  "type": "lite",
+  "_comment": "release_time: 2026-03-01 00:00:00",
+  "toolhead": {
+    "speed_limit": 70,
+    "offset": {
+      "x": -25.9,
+      "y": 14,
+      "z": 1.1
+    },
+    "custom_mount_gcode": ";X1\r\nL803;此处使喷嘴降温\r\nG92 E0;挤出机归零\r\n;M106 P1 S255 \r\n;M106 P2 S255\r\nG1 E-10;长回抽\r\nG92 E0\r\nL801\r\nM204 S10000  ;10000mm/s2\r\nG1 X20 Y7 F30000 ;到驻点\r\nG1 X1 F300 ; 推到X0，笔尖下落\r\nG1 X20 Y7 F30000 ; 向左离开\r\nG1 F30000\r\n",
+    "custom_unmount_gcode": "G92 E0\r\nG1 F30000\r\nG1 X246 Y0 ;到驻点\r\nG1 X256 F6000 ; 收笔\r\nG1 F30000\r\nL802\r\nG1 F1500\r\nG1 E10.7;填充回抽\r\nG1 F30000\r\nM106 P1 S[AUTO] ; 风扇\r\n;M106 P2 S100\r\nG1 X70 Y265 F30000;Wipe\r\nG1 E6;Wipe\r\nG1 X90 F30000;Wipe\r\nG1 X120 F30000;Wipe\r\nG1 X90 F30000;Wipe\r\n"
+  },
+  "wiping": {
+    "have_wiping_components": false,
+    "wiper_x": 20,
+    "wiper_y": 20,
+    "wipetower_speed": 200,
+    "nozzle_cooling_flag": false,
+    "iron_apply_flag": false,
+    "user_dry_time": 0,
+    "force_thick_bridge_flag": true,
+    "support_extrusion_multiplier": 0.8
+  }
+}

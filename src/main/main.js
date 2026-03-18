@@ -2,7 +2,7 @@ const { autoUpdater } = require('electron-updater');
 const { app, BrowserWindow, Notification, ipcMain, nativeTheme, shell } = require('electron'); // 必须全部引入
 const path = require('path');
 const fs = require('fs');
-const { processGcode } = require('./mkp_engine');
+const { parseCliArguments, processGcode } = require('./mkp_engine');
 const {
   importHomeCatalogImage,
   readHomeCatalog,
@@ -807,16 +807,13 @@ if (isCliMode) {
   app.whenReady().then(() => {
     try {
       console.log("[O503] CLI process");
-      const gcodePath = process.argv[process.argv.indexOf('--Gcode') + 1];
-      const jsonPath = process.argv[process.argv.indexOf('--Json') + 1];
-      
-      if (!gcodePath || !jsonPath) {
-        console.error("[E503] CLI args miss");
-        throw new Error('参数缺失');
-      }
+      const cliArgs = parseCliArguments(process.argv);
+      const gcodePath = cliArgs.gcodePath;
 
       const startTime = Date.now();
-      const processedGcode = processGcode(gcodePath, jsonPath);
+      const processedGcode = processGcode(gcodePath, cliArgs.configPath, {
+        configFormat: cliArgs.configFormat
+      });
       
       const outputPath = gcodePath.replace('.gcode', '_processed.gcode');
       fs.writeFileSync(outputPath, processedGcode);

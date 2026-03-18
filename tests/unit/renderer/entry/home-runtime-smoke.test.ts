@@ -11,11 +11,23 @@ describe('home.js modern runtime smoke', () => {
     );
 
     expect(block).toMatch(/const selectedPrinterLocation = findPrinterLocation\(selectedPrinter\);/);
+    expect(block).toMatch(/if \(selectedPrinter && \(!selectedPrinterLocation \|\| selectedPrinterLocation\.brandId !== selectedBrandObj\.id\)\) \{/);
     expect(block).toMatch(/selectedPrinter = fallbackPrinter\?\.id \|\| null;/);
     expect(block).toMatch(/selectedBrand = fallbackBrand\?\.id \|\| null;/);
     expect(block).toMatch(/const currentPrinter = selectedPrinter \? getPrinterObj\(selectedPrinter\) : null;/);
     expect(block).toMatch(/if \(currentPrinter && selectedVersion/);
     expect(block).toMatch(/selectedVersion = null;/);
+  });
+
+  it('preserves an explicit brand-only restore state instead of auto-picking the first printer on startup', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function ensureValidHomeSelection()'),
+      source.lastIndexOf('function getBrandAvatar(')
+    );
+
+    expect(block).not.toMatch(/if \(!selectedPrinterLocation \|\| selectedPrinterLocation\.brandId !== selectedBrandObj\.id\) \{/);
+    expect(block).toMatch(/if \(selectedBrandObj\) \{[\s\S]*if \(selectedPrinter && \(!selectedPrinterLocation \|\| selectedPrinterLocation\.brandId !== selectedBrandObj\.id\)\) \{/);
   });
 
   it('keeps selectPrinter on the legacy-to-modern sync path before rendering download versions', () => {
@@ -45,6 +57,32 @@ describe('home.js modern runtime smoke', () => {
     expect(block).toMatch(/updateSidebarVersionBadge\(selectedVersion\);[\s\S]*saveUserConfig\(\);[\s\S]*refreshHomeSelectionSurfaces\(selectedBrand\);[\s\S]*refreshHomeSelectionDownstream\(selectedPrinterObj\);/);
   });
 
+  it('clears the carried version when switching to a different printer even if both printers support the same version label', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function selectPrinter('),
+      source.lastIndexOf('function generateCustomIdentifier(')
+    );
+
+    expect(block).not.toMatch(/if \(!keepVersion \|\| \(selectedVersion && supportedVersions\.length > 0 && !supportedVersions\.includes\(selectedVersion\)\)\) \{/);
+    expect(block).toMatch(/const previousPrinterId = selectedPrinter;/);
+    expect(block).toMatch(/selectedPrinter = printerId;/);
+    expect(block).toMatch(/if \(!keepVersion \|\| selectedPrinter !== previousPrinterId \|\| \(selectedVersion && supportedVersions\.length > 0 && !supportedVersions\.includes\(selectedVersion\)\)\) \{/);
+    expect(block).toMatch(/selectedVersion = null;/);
+  });
+
+  it('syncs cleared version context back into the modern runtime before downstream rendering in selectPrinter', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function selectPrinter('),
+      source.lastIndexOf('function generateCustomIdentifier(')
+    );
+
+    expect(block).toMatch(/selectedVersion = null;/);
+    expect(block).toMatch(/__syncLegacyContextToModern__\([\s\S]*printerId,[\s\S]*versionType: selectedVersion[\s\S]*\)/);
+    expect(block).toMatch(/__syncLegacyContextToModern__[\s\S]*updateSidebarVersionBadge\(selectedVersion\);[\s\S]*saveUserConfig\(\);[\s\S]*refreshHomeSelectionDownstream\(selectedPrinterObj\);/);
+  });
+
   it('revalidates the current version against the selected printer in selectBrand before rendering download versions', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
     const block = source.slice(
@@ -67,10 +105,22 @@ describe('home.js modern runtime smoke', () => {
 
     expect(block).toMatch(/const sidebarBrand = document\.getElementById\('sidebarBrand'\);/);
     expect(block).toMatch(/if \(sidebarBrand\) \{[\s\S]*sidebarBrand\.textContent = brand\.shortName \|\| brand\.name;[\s\S]*\}/);
-    expect(block).toMatch(/if \(!hasCurrentPrinter\) \{[\s\S]*selectPrinter\(fallbackPrinter\.id, true\);[\s\S]*return;[\s\S]*\}/);
-    expect(block).toMatch(/let delegatedToFallbackPrinter = false;/);
-    expect(block).toMatch(/if \(!hasCurrentPrinter\) \{[\s\S]*delegatedToFallbackPrinter = true;[\s\S]*selectPrinter\(fallbackPrinter\.id, true\);[\s\S]*\}/);
-    expect(block).toMatch(/if \(delegatedToFallbackPrinter\) \{[\s\S]*return;[\s\S]*\}/);
+    expect(block).not.toMatch(/selectPrinter\(fallbackPrinter\.id, true\)/);
+  });
+
+  it('does not auto-select a fallback printer when brand selection changes and no current printer belongs to that brand', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('async function selectBrand('),
+      source.lastIndexOf('function selectPrinter(')
+    );
+
+    expect(block).toMatch(/const printerList = getPrinterListByBrand\(brand\.id\);/);
+    expect(block).toMatch(/const hasCurrentPrinter = printerList\.some\(\(printer\) => printer\.id === selectedPrinter\);/);
+    expect(block).toMatch(/if \(!hasCurrentPrinter\) \{[\s\S]*selectedPrinter = null;[\s\S]*selectedVersion = null;[\s\S]*\}/);
+    expect(block).toMatch(/if \(!hasCurrentPrinter\) \{[\s\S]*sidebarModelName\.textContent = '未选择';[\s\S]*\}/);
+    expect(block).toMatch(/if \(!hasCurrentPrinter\) \{[\s\S]*updateSidebarVersionBadge\(selectedVersion\);[\s\S]*\}/);
+    expect(block).not.toMatch(/const fallbackPrinter = getFirstSelectablePrinter\(brand\.id\);/);
   });
 
   it('refreshes the cleared version badge before re-persisting and rendering downloads in selectBrand', () => {
@@ -90,7 +140,7 @@ describe('home.js modern runtime smoke', () => {
       source.lastIndexOf('function selectPrinter(')
     );
 
-    expect(block).toMatch(/if \(delegatedToFallbackPrinter\) \{[\s\S]*return;[\s\S]*\}[\s\S]*saveUserConfig\(\);[\s\S]*refreshHomeSelectionSurfaces\(selectedBrand\);/);
+    expect(block).toMatch(/saveUserConfig\(\);[\s\S]*refreshHomeSelectionSurfaces\(selectedBrand\);/);
     expect(block).toMatch(/refreshHomeSelectionSurfaces\(selectedBrand\);[\s\S]*const currentPrinter = selectedPrinter \? getPrinterObj\(selectedPrinter\) : null;/);
     expect(block).toMatch(/refreshHomeSelectionDownstream\(currentPrinter\);/);
   });
@@ -102,9 +152,10 @@ describe('home.js modern runtime smoke', () => {
       source.lastIndexOf('function selectPrinter(')
     );
 
-    expect(block).toMatch(/if \(!hasCurrentPrinter\) \{[\s\S]*const fallbackPrinter = getFirstSelectablePrinter\(brand\.id\);[\s\S]*\}/);
+    expect(block).toMatch(/if \(!hasCurrentPrinter\) \{[\s\S]*selectedPrinter = null;[\s\S]*selectedVersion = null;[\s\S]*\}/);
     expect(block).toMatch(/const currentPrinter = selectedPrinter \? getPrinterObj\(selectedPrinter\) : null;/);
     expect(block).toMatch(/refreshHomeSelectionDownstream\(currentPrinter\);/);
+    expect(block).toMatch(/if \(!hasCurrentPrinter\) \{[\s\S]*selectedPrinter = null;[\s\S]*\}/);
   });
 
   it('still persists and repaints the selected empty brand before clearing downstream download surfaces in selectBrand', () => {
@@ -345,6 +396,7 @@ describe('home.js modern runtime smoke', () => {
 
     expect(block).toMatch(/if \(target\.type === 'brand'\) \{[\s\S]*brand\.avatarMode = 'generated';[\s\S]*\}/);
     expect(block).toMatch(/if \(await persistCatalogWithFeedback\(\)\) \{[\s\S]*refreshHomeSelectionSurfaces\(selectedBrand\);[\s\S]*refreshSelectedBrandDownloadSurface\(target\);[\s\S]*\}/);
+    expect(block).not.toMatch(/window\.renderDownloadVersions\(getPrinterObj\(selectedPrinter\)\)/);
   });
 
   it('re-renders download versions when restoreOriginalImageFlow updates the selected brand with an active printer', () => {
@@ -453,6 +505,19 @@ describe('home.js modern runtime smoke', () => {
     });
   });
 
+  it('routes refreshSelectedBrandDownloadSurface through the shared downstream helper with the active printer', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function refreshSelectedBrandDownloadSurface(target) {'),
+      source.lastIndexOf('function refreshHomeSelectionSurfaces(brandId = selectedBrand) {')
+    );
+
+    expect(block).toMatch(/if \(target\?\.type === 'brand' && target\.brandId === selectedBrand && selectedPrinter\) \{/);
+    expect(block).toMatch(/const activePrinter = getPrinterObj\(selectedPrinter\);/);
+    expect(block).toMatch(/refreshHomeSelectionDownstream\(activePrinter\);/);
+    expect(block).not.toMatch(/window\.renderDownloadVersions\(getPrinterObj\(selectedPrinter\)\)/);
+  });
+
   it('keeps selected-brand favorite toggles on the shared download refresh path', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
     const start = source.lastIndexOf('async function toggleFavoriteFlow(target) {');
@@ -494,5 +559,21 @@ describe('home.js modern runtime smoke', () => {
     const block = rest.slice(0, end);
 
     expect(block).toMatch(/if \(isBrand && item\.id === selectedBrand\) \{[\s\S]*sidebarBrand\.textContent = item\.shortName \|\| item\.name;[\s\S]*(refreshSelectedBrandDownloadSurface\(target\)|window\.renderDownloadVersions\(getPrinterObj\(selectedPrinter\)\));[\s\S]*\}/);
+  });
+
+  it('exposes a shared sidebar selection sync helper for startup and storage-driven restores', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
+
+    expect(source).toMatch(/function syncSidebarSelectionState\(\) \{/);
+    expect(source).toMatch(/sidebarBrand\.textContent = brand \? \(brand\.shortName \|\| brand\.name\) : '未选择品牌';/);
+    expect(source).toMatch(/sidebarModelName\.textContent = printer \? \(printer\.shortName \|\| printer\.name\) : '未选择';/);
+    expect(source).toMatch(/window\.syncSidebarSelectionState = syncSidebarSelectionState;/);
+  });
+
+  it('lets selected detailed-mode printer cards keep the hover flip interaction', () => {
+    const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
+
+    expect(styleSource).toMatch(/#page-home \.home-printer-card-detailed:hover \.home-printer-flip \{\s*transform: rotateY\(180deg\);\s*\}/);
+    expect(styleSource).toMatch(/#page-home \.home-printer-card-detailed\.selected:hover \.home-printer-flip \{\s*transform: rotateY\(180deg\);\s*\}/);
   });
 });

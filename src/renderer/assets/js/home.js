@@ -309,6 +309,23 @@ function updateSidebarVersionBadge(version) {
   }
 }
 
+function syncSidebarSelectionState() {
+  const sidebarBrand = document.getElementById('sidebarBrand');
+  const sidebarModelName = document.getElementById('sidebarModelName');
+  const brand = getBrandById(selectedBrand);
+  const printer = selectedPrinter ? getPrinterObj(selectedPrinter) : null;
+
+  if (sidebarBrand) {
+    sidebarBrand.textContent = brand ? (brand.shortName || brand.name) : '未选择品牌';
+  }
+
+  if (sidebarModelName) {
+    sidebarModelName.textContent = printer ? (printer.shortName || printer.name) : '未选择';
+  }
+
+  updateSidebarVersionBadge(selectedVersion);
+}
+
 function getBrandById(brandId) {
   return brands.find((brand) => brand.id === brandId) || null;
 }
@@ -407,7 +424,7 @@ function ensureValidHomeSelection() {
   const selectedPrinterLocation = findPrinterLocation(selectedPrinter);
 
   if (selectedBrandObj) {
-    if (!selectedPrinterLocation || selectedPrinterLocation.brandId !== selectedBrandObj.id) {
+    if (selectedPrinter && (!selectedPrinterLocation || selectedPrinterLocation.brandId !== selectedBrandObj.id)) {
       const fallbackPrinter = getFirstSelectablePrinter(selectedBrandObj.id);
       selectedPrinter = fallbackPrinter?.id || null;
     }
@@ -710,18 +727,22 @@ async function selectBrand(brandId) {
 
   const printerList = getPrinterListByBrand(brand.id);
   const hasCurrentPrinter = printerList.some((printer) => printer.id === selectedPrinter);
-  let delegatedToFallbackPrinter = false;
 
   if (!hasCurrentPrinter) {
-    const fallbackPrinter = getFirstSelectablePrinter(brand.id);
-    if (fallbackPrinter) {
-      delegatedToFallbackPrinter = true;
-      selectPrinter(fallbackPrinter.id, true);
+    selectedPrinter = null;
+    selectedVersion = null;
+    const sidebarModelName = document.getElementById('sidebarModelName');
+    if (sidebarModelName) {
+      sidebarModelName.textContent = '未选择';
     }
-  }
-
-  if (delegatedToFallbackPrinter) {
-    return;
+    updateSidebarVersionBadge(selectedVersion);
+    if (typeof window.__syncLegacyContextToModern__ === 'function') {
+      window.__syncLegacyContextToModern__({
+        brandId: selectedBrand,
+        printerId: null,
+        versionType: selectedVersion
+      });
+    }
   }
 
   saveUserConfig();
@@ -740,6 +761,7 @@ function selectPrinter(printerId, keepVersion = false) {
   Logger.info(`[O202] Select printer, p:${printerId}`);
   if (typeof clearOnlineListUI === 'function') clearOnlineListUI();
 
+  const previousPrinterId = selectedPrinter;
   selectedPrinter = printerId;
   const selectedPrinterObj = getPrinterObj(printerId);
   if (!selectedPrinterObj) return;
@@ -750,7 +772,7 @@ function selectPrinter(printerId, keepVersion = false) {
   }
 
   const supportedVersions = Array.isArray(selectedPrinterObj.supportedVersions) ? selectedPrinterObj.supportedVersions : [];
-  if (!keepVersion || (selectedVersion && supportedVersions.length > 0 && !supportedVersions.includes(selectedVersion))) {
+  if (!keepVersion || selectedPrinter !== previousPrinterId || (selectedVersion && supportedVersions.length > 0 && !supportedVersions.includes(selectedVersion))) {
     selectedVersion = null;
   }
 
@@ -762,6 +784,14 @@ function selectPrinter(printerId, keepVersion = false) {
   }
   if (sidebarModelName) {
     sidebarModelName.textContent = selectedPrinterObj.shortName || selectedPrinterObj.name;
+  }
+
+  if (typeof window.__syncLegacyContextToModern__ === 'function') {
+    window.__syncLegacyContextToModern__({
+      brandId: selectedBrand,
+      printerId,
+      versionType: selectedVersion
+    });
   }
 
   updateSidebarVersionBadge(selectedVersion);
@@ -1161,11 +1191,8 @@ async function useGeneratedAvatarFlow(target) {
   }
 
   if (await persistCatalogWithFeedback()) {
-    renderBrands();
-    renderPrinters(selectedBrand);
-    if (target.type === 'brand' && target.brandId === selectedBrand && selectedPrinter && typeof window.renderDownloadVersions === 'function') {
-      window.renderDownloadVersions(getPrinterObj(selectedPrinter));
-    }
+    refreshHomeSelectionSurfaces(selectedBrand);
+    refreshSelectedBrandDownloadSurface(target);
   }
 }
 
@@ -1178,8 +1205,9 @@ function pickImageUploadForTarget(target) {
 }
 
 function refreshSelectedBrandDownloadSurface(target) {
-  if (target?.type === 'brand' && target.brandId === selectedBrand && selectedPrinter && typeof window.renderDownloadVersions === 'function') {
-    window.renderDownloadVersions(getPrinterObj(selectedPrinter));
+  if (target?.type === 'brand' && target.brandId === selectedBrand && selectedPrinter) {
+    const activePrinter = getPrinterObj(selectedPrinter);
+    refreshHomeSelectionDownstream(activePrinter);
   }
 }
 
@@ -1536,6 +1564,7 @@ function bindContextMenu() {
 window.ensureHomeCatalogReady = ensureHomeCatalogReady;
 window.toggleSidebar = toggleSidebar;
 window.updateSidebarVersionBadge = updateSidebarVersionBadge;
+window.syncSidebarSelectionState = syncSidebarSelectionState;
 window.renderBrands = renderBrands;
 window.renderPrinters = renderPrinters;
 window.filterPrinters = filterPrinters;
@@ -1956,4 +1985,3 @@ function updateHomeHeader(brandId = selectedBrand) {
   const printerCount = getPrinterListByBrand(brand.id).length;
   title.textContent = `${displayName} · ${printerCount} 个机型`;
 }
-

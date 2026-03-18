@@ -1,0 +1,27 @@
+{
+  "version": "3.0.0-r1",
+  "printer": "a1mini",
+  "type": "quick",
+  "_comment": "release_time: 2025-03-01 00:00:00",
+  "toolhead": {
+    "speed_limit": 70,
+    "offset": {
+      "x": -0.3,
+      "y": 18.1,
+      "z": 3.8
+    },
+    "custom_mount_gcode": ";CustomLock\r\n;A1M\r\nG92 E0\r\nG1 E-10 F1800\r\nG92 E0\r\nL801\r\nM204 S10000\r\nG1 X168 F42000\r\nG1 X175 F10000\r\nG1 X185 F10000\r\nG1 X168 F42000\r\nG1 F30000\r\n",
+    "custom_unmount_gcode": ";CustomRetract\r\nM106 S[AUTO]\r\nG1 X168 F42000\r\nG1 X175 F10000\r\nG1 X189 F10000\r\nG1 X168 F5000\r\nSILICONE_WIPE;用\";\"注释此行将改用吐丝清理\r\nG1 X25 Y175 F30000 ;Brush\r\nG1 Z0.2 F30000 ;Brush\r\nG1 F30000;Brush\r\nG1 Y186 ;Brush\r\nG1 X-5;Brush\r\nG1 Y183;Brush\r\nG1 X23;Brush\r\nG1 Y186 ;Brush\r\nG1 X-5;Brush\r\nG1 Y183;Brush\r\nG1 X23;Brush\r\nG1 Y186 ;Brush\r\nG1 X-5;Brush\r\nG1 Y183;Brush\r\nG1 X23;Brush\r\nL801;Brush\r\n;当不使用擦嘴塔且硅胶擦嘴行注释后启用吐丝清理\r\nG1 X-13.5;Wipe\r\nL802\r\nG92 E0\r\nG1 E10.5 F1500\r\nG1 E30 F1500;Wipe\r\nG92 E0\r\nG1 F30000\r\nG1 X0;Wipe\r\nG1 X-13.5;Wipe\r\nG1 X0;Wipe\r\n"
+  },
+  "wiping": {
+    "have_wiping_components": false,
+    "wiper_x": 20,
+    "wiper_y": 20,
+    "wipetower_speed": 200,
+    "nozzle_cooling_flag": false,
+    "iron_apply_flag": false,
+    "user_dry_time": 0,
+    "force_thick_bridge_flag": true,
+    "support_extrusion_multiplier": 0.8
+  }
+}
