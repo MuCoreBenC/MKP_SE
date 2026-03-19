@@ -6,8 +6,8 @@ EXTRUDER_REFILL
 G1 X20 Y10.19
 NOZZLE_HEIGHT_ADJUST
 G1 F9600
-G1 X20 Y20 E.25658
-G1 X29.81 Y20 E.25658
+G1 X20 Y20 E.34 ;MoreExtrusion
+G1 X29.81 Y20 E.34 ;MoreExtrusion
 G1 E-.21 F5400
 ;WIPE_START
 G1 F9600
@@ -17,8 +17,8 @@ G1 X23.71 Y25.679 F30000
 G1 X20 Y29.81
 G1 E.3 F5400
 G1 F9600
-G1 X20 Y20 E.25658
-G1 X10.19 Y20 E.25658
+G1 X20 Y20 E.34 ;MoreExtrusion
+G1 X10.19 Y20 E.34 ;MoreExtrusion
 G1 E-.21 F5400
 ;WIPE_START
 G1 F9600
@@ -53,16 +53,237 @@ TOWER_ZP_ST
 `.trim().split(/\r?\n/);
 
 const DEFAULT_TOWER_BASE_LAYER_GCODE = `
-; MKP tower base template
-G92 E0
-G1 X20 Y20 E1.0
-G1 X25 Y20 E0.5
-G92 E0
+;Tower_Base_Layer_Gcode
+G1 X19.681 Y20.319
+NOZZLE_HEIGHT_ADJUST
+EXTRUDER_REFILL
+G1 F9600
+G1 X19.681 Y20.319 E.02318
+G1 X20.319 Y20.319 E.02318
+G1 X20.319 Y19.681 E.02318
+G1 X19.681 Y19.681 E.02318
+G1 X19.304 Y19.304 F30000
+G1 F9600
+G1 X20.696 Y19.304 E.05059
+G1 X20.696 Y20.696 E.05059
+G1 X19.304 Y20.696 E.05059
+G1 X19.304 Y19.304 E.05059
+G1 X18.927 Y18.927 F30000
+G1 F9600
+G1 X21.073 Y18.927 E.078
+G1 X21.073 Y21.073 E.078
+G1 X18.927 Y21.073 E.078
+G1 X18.927 Y18.927 E.078
+G1 X18.55 Y18.55 F30000
+G1 F9600
+G1 X18.55 Y21.45 E.1054
+G1 X21.45 Y21.45 E.1054
+G1 X21.45 Y18.55 E.1054
+G1 X18.55 Y18.55 E.1054
+G1 X18.173 Y18.173 F30000
+G1 F9600
+G1 X18.173 Y21.827 E.13281
+G1 X21.827 Y21.827 E.13281
+G1 X21.827 Y18.173 E.13281
+G1 X18.173 Y18.173 E.13281
+G1 X17.796 Y17.796 F30000
+G1 F9600
+G1 X22.204 Y17.796 E.16022
+G1 X22.204 Y22.204 E.16022
+G1 X17.796 Y22.204 E.16022
+G1 X17.796 Y17.796 E.16022
+G1 X17.419 Y17.419 F30000
+G1 F9600
+G1 X22.581 Y17.419 E.18763
+G1 X22.581 Y22.581 E.18763
+G1 X17.419 Y22.581 E.18763
+G1 X17.419 Y17.419 E.18763
+G1 X17.042 Y17.042 F30000
+G1 F9600
+G1 X22.958 Y17.042 E.21504
+G1 X22.958 Y22.958 E.21504
+G1 X17.042 Y22.958 E.21504
+G1 X17.042 Y17.042 E.21504
+G1 X16.664 Y16.664 F30000
+G1 F9600
+G1 X16.664 Y23.336 E.24245
+G1 X23.336 Y23.336 E.24245
+G1 X23.336 Y16.664 E.24245
+G1 X16.664 Y16.664 E.24245
+G1 X16.287 Y16.287 F30000
+G1 F9600
+G1 X16.287 Y23.713 E.26986
+G1 X23.713 Y23.713 E.26986
+G1 X23.713 Y16.287 E.26986
+G1 X16.287 Y16.287 E.26986
+G1 X15.91 Y15.91 F30000
+G1 F9600
+G1 X24.09 Y15.91 E.29726
+G1 X24.09 Y24.09 E.29726
+G1 X15.91 Y24.09 E.29726
+G1 X15.91 Y15.91 E.29726
+G1 X15.533 Y15.533 F30000
+G1 F9600
+G1 X15.533 Y24.467 E.32467
+G1 X24.467 Y24.467 E.32467
+G1 X24.467 Y15.533 E.32467
+G1 X15.533 Y15.533 E.32467
+G1 X15.156 Y15.156 F30000
+G1 F9600
+G1 X15.156 Y24.844 E.35208
+G1 X24.844 Y24.844 E.35208
+G1 X24.844 Y15.156 E.35208
+G1 X15.156 Y15.156 E.35208
+G1 X14.779 Y14.779 F30000
+G1 F9600
+G1 X25.221 Y14.779 E.37949
+G1 X25.221 Y25.221 E.37949
+G1 X14.779 Y25.221 E.37949
+G1 X14.779 Y14.779 E.37949
+G1 X14.402 Y14.402 F30000
+G1 F9600
+G1 X14.402 Y25.598 E.4069
+G1 X25.598 Y25.598 E.4069
+G1 X25.598 Y14.402 E.4069
+G1 X14.402 Y14.402 E.4069
+G1 X14.025 Y14.025 F30000
+G1 F9600
+G1 X14.025 Y25.975 E.43431
+G1 X25.975 Y25.975 E.43431
+G1 X25.975 Y14.025 E.43431
+G1 X14.025 Y14.025 E.43431
+G1 X13.648 Y13.648 F30000
+G1 F9600
+G1 X26.352 Y13.648 E.46172
+G1 X26.352 Y26.352 E.46172
+G1 X13.648 Y26.352 E.46172
+G1 X13.648 Y13.648 E.46172
+G1 X13.271 Y13.271 F30000
+G1 F9600
+G1 X13.271 Y26.729 E.48913
+G1 X26.729 Y26.729 E.48913
+G1 X26.729 Y13.271 E.48913
+G1 X13.271 Y13.271 E.48913
+G1 X12.894 Y12.894 F30000
+G1 F9600
+G1 X12.894 Y27.106 E.51653
+G1 X27.106 Y27.106 E.51653
+G1 X27.106 Y12.894 E.51653
+G1 X12.894 Y12.894 E.51653
+G1 X12.517 Y12.517 F30000
+G1 F9600
+G1 X12.517 Y27.483 E.54394
+G1 X27.483 Y27.483 E.54394
+G1 X27.483 Y12.517 E.54394
+G1 X12.517 Y12.517 E.54394
+G1 X12.14 Y12.14 F30000
+G1 F9600
+G1 X12.14 Y27.86 E.57135
+G1 X27.86 Y27.86 E.57135
+G1 X27.86 Y12.14 E.57135
+G1 X12.14 Y12.14 E.57135
+G1 X11.762 Y11.762 F30000
+G1 F9600
+G1 X28.238 Y11.762 E.59876
+G1 X28.238 Y28.238 E.59876
+G1 X11.762 Y28.238 E.59876
+G1 X11.762 Y11.762 E.59876
+G1 X11.385 Y11.385 F30000
+G1 F9600
+G1 X28.615 Y11.385 E.62617
+G1 X28.615 Y28.615 E.62617
+G1 X11.385 Y28.615 E.62617
+G1 X11.385 Y11.385 E.62617
+G1 X11.008 Y11.008 F30000
+G1 F9600
+G1 X28.992 Y11.008 E.65358
+G1 X28.992 Y28.992 E.65358
+G1 X11.008 Y28.992 E.65358
+G1 X11.008 Y11.008 E.65358
+G1 X10.631 Y10.631 F30000
+G1 F9600
+G1 X29.369 Y10.631 E.68099
+G1 X29.369 Y29.369 E.68099
+G1 X10.631 Y29.369 E.68099
+G1 X10.631 Y10.631 E.68099
+G1 X10.254 Y10.254 F30000
+G1 F9600
+G1 X29.746 Y10.254 E.70839
+G1 X29.746 Y29.746 E.70839
+G1 X10.254 Y29.746 E.70839
+G1 X10.254 Y10.254 E.70839
+G1 X9.877 Y9.877 F30000
+G1 F9600
+G1 X30.123 Y9.877 E.7358
+G1 X30.123 Y30.123 E.7358
+G1 X9.877 Y30.123 E.7358
+G1 X9.877 Y9.877 E.7358
+G1 X9.5 Y9.5 F30000
+G1 F9600
+G1 X9.5 Y30.5 E.76321
+G1 X30.5 Y30.5 E.76321
+G1 X30.5 Y9.5 E.76321
+G1 X9.5 Y9.5 E.76321
+G1 X9.123 Y9.123 F30000
+G1 F9600
+G1 X9.123 Y30.877 E.79062
+G1 X30.877 Y30.877 E.79062
+G1 X30.877 Y9.123 E.79062
+G1 X9.123 Y9.123 E.79062
+G1 X8.746 Y8.746 F30000
+G1 F9600
+G1 X31.254 Y8.746 E.81803
+G1 X31.254 Y31.254 E.81803
+G1 X8.746 Y31.254 E.81803
+G1 X8.746 Y8.746 E.81803
+G1 X8.369 Y8.369 F30000
+G1 F9600
+G1 X8.369 Y31.631 E.84544
+G1 X31.631 Y31.631 E.84544
+G1 X31.631 Y8.369 E.84544
+G1 X8.369 Y8.369 E.84544
+G1 X7.992 Y7.992 F30000
+G1 F9600
+G1 X32.008 Y7.992 E.87285
+G1 X32.008 Y32.008 E.87285
+G1 X7.992 Y32.008 E.87285
+G1 X7.992 Y7.992 E.87285
+G1 X7.615 Y7.615 F30000
+G1 F9600
+G1 X7.615 Y32.385 E.90025
+G1 X32.385 Y32.385 E.90025
+G1 X32.385 Y7.615 E.90025
+G1 X7.615 Y7.615 E.90025
+G1 X7.238 Y7.238 F30000
+G1 F9600
+G1 X32.762 Y7.238 E.92766
+G1 X32.762 Y32.762 E.92766
+G1 X7.238 Y32.762 E.92766
+G1 X7.238 Y7.238 E.92766
+G1 X6.86 Y6.86 F30000
+G1 F9600
+G1 X33.14 Y6.86 E.95507
+G1 X33.14 Y33.14 E.95507
+G1 X6.86 Y33.14 E.95507
+G1 X6.86 Y6.86 E.95507
+G1 X6.86 Y5.9 F30000
+EXTRUDER_RETRACT
+;Tower Base Layer Finished
 `.trim().split(/\r?\n/);
 
+const MKP_ENGINE_RUNTIME_REVISION = '2026-03-18-two-stage-tower-clean-export-v1';
+const FIRST_GLUE_SETTLING_MS = 6000;
 const PSEUDO_RANDOM_TABLE = ['3', '7', '2', '8', '1', '5', '9', '4', '6'];
 const MAX_ORCA_IRONING_EXTRUSION = 7.9;
-let pseudoRandomIndex = 0;
+let pseudoRandomIndex = 1;
+
+function getEngineRuntimeMetadata(overrides = {}) {
+  return {
+    ...overrides,
+    engineModule: 'src/main/mkp_engine.js',
+    engineRevision: MKP_ENGINE_RUNTIME_REVISION
+  };
+}
 
 function parseCliArguments(argv = []) {
   const gcodeIndex = argv.indexOf('--Gcode');
@@ -140,11 +361,7 @@ function normalizeConfig(source = {}) {
       customUnmountGcode: getString(toolhead, ['customUnmountGcode', 'custom_unmount_gcode'], 'M117 MKPSupport: Unmount Gcode')
     },
     wiping: {
-      haveWipingComponents: getBoolean(
-        wiping,
-        ['haveWipingComponents', 'have_wiping_components', 'useWipingTowers', 'use_wiping_towers'],
-        false
-      ),
+      haveWipingComponents: resolveWipingTowerEnabled(wiping),
       switchTowerType: getNumber(wiping, ['switchTowerType', 'switch_tower_type'], 1),
       wiperX: getNumber(wiping, ['wiperX', 'wiper_x'], 0),
       wiperY: getNumber(wiping, ['wiperY', 'wiper_y'], 0),
@@ -156,10 +373,12 @@ function normalizeConfig(source = {}) {
       supportExtrusionMultiplier: getNumber(wiping, ['supportExtrusionMultiplier', 'support_extrusion_multiplier'], 1)
     },
     templates: {
-      wipingGcode: Array.isArray(templates.wipingGcode) ? templates.wipingGcode.slice() : DEFAULT_WIPING_GCODE.slice(),
-      towerBaseLayerGcode: Array.isArray(templates.towerBaseLayerGcode)
-        ? templates.towerBaseLayerGcode.slice()
-        : DEFAULT_TOWER_BASE_LAYER_GCODE.slice()
+      wipingGcode: resolveTemplateLines(templates.wipingGcode, DEFAULT_WIPING_GCODE, '; MKP wiping tower template'),
+      towerBaseLayerGcode: resolveTemplateLines(
+        templates.towerBaseLayerGcode,
+        DEFAULT_TOWER_BASE_LAYER_GCODE,
+        '; MKP tower base template'
+      )
     },
     machine: {
       nozzleDiameter: getNumber(machine, ['nozzleDiameter', 'nozzle_diameter'], 0.4),
@@ -171,6 +390,45 @@ function normalizeConfig(source = {}) {
       ironingPathOffsetMm: getNumber(postProcessing, ['ironingPathOffsetMm', 'ironing_path_offset_mm'], 0)
     }
   };
+}
+
+function resolveWipingTowerEnabled(wiping = {}) {
+  const explicitKeys = [
+    'useWipingTowers',
+    'use_wiping_towers',
+    'enableWipingTower',
+    'enable_wiping_tower'
+  ];
+
+  for (const key of explicitKeys) {
+    if (typeof wiping?.[key] === 'boolean') {
+      return wiping[key];
+    }
+  }
+
+  // Legacy presets stored the tower-mode toggle under `have_wiping_components`,
+  // but the current product default is slow-line tower mode unless a newer
+  // explicit override disables it.
+  return true;
+}
+
+function resolveTemplateLines(templateLines, fallbackLines, legacyHeader) {
+  if (!Array.isArray(templateLines) || templateLines.length === 0) {
+    return fallbackLines.slice();
+  }
+
+  const normalized = templateLines.map((line) => String(line).trimEnd());
+  if (isLegacyPlaceholderTemplate(normalized, legacyHeader)) {
+    return fallbackLines.slice();
+  }
+
+  return normalized;
+}
+
+function isLegacyPlaceholderTemplate(lines, legacyHeader) {
+  return Array.isArray(lines)
+    && lines.length <= 5
+    && String(lines[0] || '').trim() === legacyHeader;
 }
 
 function getNumber(source, keys, fallback) {
@@ -368,6 +626,45 @@ function resetPseudoRandom() {
   pseudoRandomIndex = 0;
 }
 
+function buildTowerPreparationTravelGcode(options = {}) {
+  const currentLayerHeight = options.currentLayerHeight || 0;
+  const wiperX = options.wiperX || 0;
+  const wiperY = options.wiperY || 0;
+  const machineBounds = options.machineBounds || null;
+  const filamentType = String(options.filamentType || 'PLA').toUpperCase();
+  const isPla = filamentType.includes('PLA');
+  const lines = [`G1 Z${roundTo(currentLayerHeight, 3).toFixed(3)}`];
+  const variableWipeMove = `G1 X15 Y2${getPseudoRandom()}`;
+  const pushOffsetMove = (line) => {
+    lines.push(
+      processGcodeOffset(
+        line,
+        wiperX - 5,
+        wiperY - 5,
+        currentLayerHeight + 3,
+        'normal',
+        { machineBounds }
+      )
+    );
+  };
+  const pushVariableWipe = () => pushOffsetMove(variableWipeMove);
+
+  if (isPla) {
+    pushVariableWipe();
+    pushOffsetMove('G1 X25 Y25');
+    pushVariableWipe();
+    pushOffsetMove('G1 X25 Y25');
+  }
+
+  pushVariableWipe();
+  pushOffsetMove('G1 X25 Y25');
+  pushVariableWipe();
+  pushOffsetMove('G1 X15 Y15');
+  pushOffsetMove(`G1 X20 Y1${getPseudoRandom()}`);
+
+  return lines;
+}
+
 function processGcodeOffset(line, xOffset, yOffset, zOffset, mode = 'normal', options = {}) {
   const { command: originalCommand, comment } = splitCommandAndComment(line);
   let command = originalCommand;
@@ -469,9 +766,19 @@ function isInterfaceMotionLine(line) {
   return /^G1\b/.test(command) && /(?:\bX|\bY)/.test(command);
 }
 
+function isStandalonePositiveExtrusionLine(line) {
+  const { command } = splitCommandAndComment(line);
+  if (!/^G1\b/.test(command) || /(?:\bX|\bY|\bZ)/.test(command)) {
+    return false;
+  }
+
+  const match = command.match(/\bE([+-]?(?:\d+(?:\.\d*)?|\.\d+))/);
+  return Boolean(match) && Number(match[1]) > 0;
+}
+
 function isInterfaceExtrusionLine(line) {
   const { command } = splitCommandAndComment(line);
-  if (!/^G1\b/.test(command) || !/(?:\bX|\bY)/.test(command) || /\bZ/.test(command)) {
+  if (!/^G1\b/.test(command) || !/(?:\bX|\bY)/.test(command)) {
     return false;
   }
 
@@ -486,7 +793,7 @@ function isInterfaceExtrusionLine(line) {
 
 function getInterfaceExtrusionValue(line) {
   const { command } = splitCommandAndComment(line);
-  if (!/^G1\b/.test(command) || !/(?:\bX|\bY)/.test(command) || /\bZ/.test(command)) {
+  if (!/^G1\b/.test(command) || !/(?:\bX|\bY)/.test(command)) {
     return 0;
   }
 
@@ -499,11 +806,27 @@ function getInterfaceExtrusionValue(line) {
   return Number.isFinite(extrusionValue) && extrusionValue > 0 ? extrusionValue : 0;
 }
 
+function isInterfaceZOnlyLine(line) {
+  const { command } = splitCommandAndComment(line);
+  return /^G1\b/.test(command)
+    && /\bZ/.test(command)
+    && !/(?:\bX|\bY)/.test(command)
+    && !/\bF[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(command)
+    && !/\bE[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(command);
+}
+
 function isTravelOnlyFeedMove(line) {
   const { command } = splitCommandAndComment(line);
   return /^G1\b/.test(command)
     && /(?:\bX|\bY)/.test(command)
     && /\bF[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(command)
+    && !/\bE[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(command);
+}
+
+function isTravelMoveWithoutExtrusion(line) {
+  const { command } = splitCommandAndComment(line);
+  return /^G1\b/.test(command)
+    && /(?:\bX|\bY)/.test(command)
     && !/\bE[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(command);
 }
 
@@ -559,7 +882,49 @@ function deleteWipe(interfaceLines = []) {
     }
   }
 
-  return nextLines;
+  return trimTrailingTerminalTravelMoves(nextLines);
+}
+
+function trimTrailingTerminalTravelMoves(interfaceLines = []) {
+  if (!Array.isArray(interfaceLines) || interfaceLines.length < 2) {
+    return Array.isArray(interfaceLines) ? interfaceLines.slice() : [];
+  }
+
+  const lastIndex = interfaceLines.length - 1;
+  if (!String(interfaceLines[lastIndex]).includes(';ZJUMP_START')) {
+    return interfaceLines.slice();
+  }
+
+  let trimStart = lastIndex;
+  while (trimStart > 0 && isIgnorableTrailingInterfaceLine(interfaceLines[trimStart - 1])) {
+    trimStart -= 1;
+  }
+
+  while (trimStart > 0 && isTravelMoveWithoutExtrusion(interfaceLines[trimStart - 1])) {
+    trimStart -= 1;
+  }
+
+  if (trimStart === lastIndex) {
+    return interfaceLines.slice();
+  }
+
+  return [
+    ...interfaceLines.slice(0, trimStart),
+    interfaceLines[lastIndex]
+  ];
+}
+
+function isIgnorableTrailingInterfaceLine(line) {
+  const text = String(line || '').trim();
+  if (!text) {
+    return true;
+  }
+
+  if (text.includes(';ZJUMP_START') || text.includes('; WIPE_START') || text.includes('; WIPE_END')) {
+    return false;
+  }
+
+  return !isInterfaceMotionLine(text) && !isInterfaceZOnlyLine(text);
 }
 
 function hasValidInterfaceSet(interfaceLines = []) {
@@ -626,6 +991,101 @@ function classifyIroningFeature(nextLine, config, currentZ) {
     shouldTrack: false,
     ignoreReason: 'top-surface-ironing'
   };
+}
+
+function parseMachineTypeFromLine(line, currentMachineType = 'MKP') {
+  const text = String(line || '');
+
+  if (text.includes(';===== machine: A1 mini') || text.includes('; printer_model = Bambu Lab A1 mini')) {
+    return 'A1mini';
+  }
+
+  if (text.includes(';===== machine: A1') && !text.includes('mini')) {
+    return 'A1';
+  }
+
+  if (text.includes('; printer_model = Bambu Lab A1')) {
+    return text.includes('mini') ? 'A1mini' : 'A1';
+  }
+
+  if (text.includes(';===== machine: P1') || text.includes('; printer_model = Bambu Lab P1')) {
+    return 'P1Lite';
+  }
+
+  if (text.includes(';===== machine: X1') || text.includes('; printer_model = Bambu Lab X1')) {
+    return 'X1';
+  }
+
+  return currentMachineType;
+}
+
+function resolveParsedNumber(value, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function getGlueWaitingPointX(machineType = 'MKP') {
+  if (machineType === 'A1mini') {
+    return 160;
+  }
+
+  if (machineType === 'A1') {
+    return 252;
+  }
+
+  return 20;
+}
+
+function parseMountRetractValue(customMountGcode = '') {
+  const lines = String(customMountGcode || '')
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const { command } = splitCommandAndComment(line);
+    if (!/^G1\b/.test(command) || !/\bE[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(command)) {
+      continue;
+    }
+
+    const match = command.match(/\bE([+-]?(?:\d+(?:\.\d*)?|\.\d+))/);
+    if (!match) {
+      continue;
+    }
+
+    const value = Number(match[1]);
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+
+    return value > 0 ? -value : value;
+  }
+
+  return 0;
+}
+
+function pushExpandedMountGcode(target, block, currentZ, offsetZ) {
+  const lines = String(block || '')
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
+
+  const l801LiftHeight = currentZ < 3
+    ? roundTo(currentZ + offsetZ + 4, 3).toFixed(3)
+    : roundTo(currentZ + offsetZ + 3, 3).toFixed(3);
+
+  for (const line of lines) {
+    const { command } = splitCommandAndComment(line);
+    if (/^G1\b/.test(command) && /\bE[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(command)) {
+      continue;
+    }
+
+    if (line.includes('L801')) {
+      target.push(`G1 Z${l801LiftHeight};L801`);
+      continue;
+    }
+
+    target.push(line);
+  }
 }
 
 function detectTrackedFeatureKind(line, nextLine, config, currentZ) {
@@ -722,6 +1182,7 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
       supportExtrusionMultiplier: config.wiping.supportExtrusionMultiplier,
       ironingPathOffsetMm: config.postProcessing.ironingPathOffsetMm
     },
+    runtime: getEngineRuntimeMetadata(runtimeOptions.runtimeInfo || {}),
     steps: [],
     _startedAtMs: startedAtMs
   };
@@ -730,7 +1191,7 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
     kind: 'config',
     title: '加载并归一化后处理配置',
     human: '已读取当前 preset，并整理成 JS 引擎统一使用的配置结构。',
-    technical: `normalizeConfig() -> configFormat=${runtimeOptions.configFormat || 'runtime'} speedLimit=${config.toolhead.speedLimit} ironApplyFlag=${config.wiping.ironApplyFlag} switchTowerType=${config.wiping.switchTowerType} supportExtrusionMultiplier=${config.wiping.supportExtrusionMultiplier}`,
+    technical: `normalizeConfig() -> configFormat=${runtimeOptions.configFormat || 'runtime'} speedLimit=${config.toolhead.speedLimit} haveWipingComponents=${config.wiping.haveWipingComponents} ironApplyFlag=${config.wiping.ironApplyFlag} switchTowerType=${config.wiping.switchTowerType} supportExtrusionMultiplier=${config.wiping.supportExtrusionMultiplier}`,
     data: {
       inputPath: report.inputPath,
       outputPath: report.outputPath,
@@ -748,6 +1209,14 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
     data: {
       ironingPathOffsetMm: config.postProcessing.ironingPathOffsetMm
     }
+  });
+
+  pushReportStep(report, {
+    kind: 'runtime',
+    title: 'Record runtime identity',
+    human: 'Recorded which executable and engine revision handled this post-processing run.',
+    technical: `runtime=${JSON.stringify(report.runtime)}`,
+    data: report.runtime
   });
 
   return report;
@@ -812,7 +1281,7 @@ function countInterfaceMotionLines(interfaceLines = []) {
   return interfaceLines.filter((line) => isInterfaceMotionLine(line)).length;
 }
 
-function buildTrackedFeatureInjectionWithReport(options = {}) {
+function prepareTrackedFeatureInjectionWithReport(options = {}) {
   const {
     interfaceBuffer = [],
     featureKind,
@@ -856,7 +1325,11 @@ function buildTrackedFeatureInjectionWithReport(options = {}) {
       technical: `${segmentData.marker} lines ${startLine}-${endLine}; deleteWipe() + hasValidInterfaceSet() => invalid; rawE=${formatCompactNumber(rawExtrusionSum)} cleanedE=${formatCompactNumber(cleanedExtrusionSum)}`,
       data: segmentData
     });
-    return [];
+    return {
+      mode: 'ignore',
+      lines: [],
+      interfaceLines: []
+    };
   }
 
   if (featureKind === 'ironing' && cleanedExtrusionSum > MAX_ORCA_IRONING_EXTRUSION) {
@@ -871,19 +1344,27 @@ function buildTrackedFeatureInjectionWithReport(options = {}) {
         threshold: MAX_ORCA_IRONING_EXTRUSION
       }
     });
-    return buildSkippedIroningRecovery(cleanedInterface, currentZ, runtimeState, cleanedExtrusionSum);
+    return {
+      mode: 'immediate',
+      lines: buildSkippedIroningRecovery(cleanedInterface, currentZ, runtimeState, cleanedExtrusionSum),
+      interfaceLines: []
+    };
   }
 
   report.summary.injectedSegments += 1;
   pushReportStep(report, {
     kind: 'decision',
     title: `复用${describeFeatureKind(featureKind)}进行涂胶`,
-    human: `已确认这是一段有效的${describeFeatureKind(featureKind)}，会按照工具头偏移复制路径并注入涂胶动作。`,
-    technical: `${segmentData.marker} lines ${startLine}-${endLine}; cleanedMotionCount=${cleanedMotionCount}; cleanedE=${formatCompactNumber(cleanedExtrusionSum)}; buildInterfaceInjection()`,
+    human: `已确认这是一段有效的${describeFeatureKind(featureKind)}，会先缓存到当前层，等命中 layer num 边界后再按 Python 逻辑统一注入涂胶动作。`,
+    technical: `${segmentData.marker} lines ${startLine}-${endLine}; cleanedMotionCount=${cleanedMotionCount}; cleanedE=${formatCompactNumber(cleanedExtrusionSum)}; queued for layer-boundary buildInterfaceInjection()`,
     data: segmentData
   });
 
-  return buildInterfaceInjection(cleanedInterface, currentZ, config, runtimeState);
+  return {
+    mode: 'pending',
+    lines: [],
+    interfaceLines: cleanedInterface
+  };
 }
 
 function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOptions = {}) {
@@ -895,11 +1376,22 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
   let interfaceBuffer = [];
   let activeFeatureStartLine = 0;
   let currentZ = 0;
+  let pendingLayerInterfaceBuffer = [];
   const runtimeState = {
+    captureLastTravelBeforeGlue: true,
     currentFanSpeed: 0,
     currentLayerThickness: 0,
+    filamentType: 'PLA',
+    firstGlueSettlingPending: true,
+    firstLayerHeight: 0,
+    firstLayerSpeed: 0,
+    firstTowerBaseInjected: false,
+    lastLayerHeight: 0,
+    lastTravelMove: '',
+    machineType: 'MKP',
     nozzleSwitchTemperature: null,
-    retractLength: 0
+    retractLength: 0,
+    travelSpeed: 0
   };
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -907,7 +1399,10 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
     const line = rawLine.trimEnd();
     const nextLine = lineIndex + 1 < lines.length ? lines[lineIndex + 1].trimEnd() : '';
 
+    runtimeState.machineType = parseMachineTypeFromLine(line, runtimeState.machineType);
+
     if (line.startsWith('; Z_HEIGHT:')) {
+      runtimeState.lastLayerHeight = currentZ;
       currentZ = numStrip(line)[0] || currentZ;
     }
 
@@ -915,8 +1410,24 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
       runtimeState.currentLayerThickness = numStrip(line)[0] || runtimeState.currentLayerThickness;
     }
 
+    if (line.startsWith('; filament_type =')) {
+      runtimeState.filamentType = line;
+    }
+
+    if (line.startsWith('; initial_layer_print_height =')) {
+      runtimeState.firstLayerHeight = numStrip(line)[0] || runtimeState.firstLayerHeight;
+    }
+
+    if (line.startsWith('; initial_layer_speed =')) {
+      runtimeState.firstLayerSpeed = numStrip(line)[0] || runtimeState.firstLayerSpeed;
+    }
+
     if (line.startsWith('; retraction_length =')) {
       runtimeState.retractLength = numStrip(line)[0] || runtimeState.retractLength;
+    }
+
+    if (line.startsWith('; travel_speed =')) {
+      runtimeState.travelSpeed = numStrip(line)[0] || runtimeState.travelSpeed;
     }
 
     if (line.startsWith('; nozzle_temperature =')) {
@@ -924,16 +1435,29 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
     }
 
     if (line.startsWith('M106 P1 S')) {
-      runtimeState.currentFanSpeed = numStrip(line)[2] || runtimeState.currentFanSpeed;
+      runtimeState.currentFanSpeed = resolveParsedNumber(numStrip(line)[2], runtimeState.currentFanSpeed);
     } else if (line.startsWith('M106 S')) {
-      runtimeState.currentFanSpeed = numStrip(line)[1] || runtimeState.currentFanSpeed;
+      runtimeState.currentFanSpeed = resolveParsedNumber(numStrip(line)[1], runtimeState.currentFanSpeed);
+    }
+
+    if (isTravelMoveWithoutExtrusion(line) && !activeFeatureKind && runtimeState.captureLastTravelBeforeGlue) {
+      runtimeState.lastTravelMove = line;
     }
 
     const trackedFeatureKind = detectTrackedFeatureKind(line, nextLine, config, currentZ);
+    const layerBoundaryReached = line.startsWith('; layer num/total_layer_count');
+    const hardFeatureBoundary = line.startsWith('; CHANGE_LAYER')
+      || line.startsWith(';LAYER_CHANGE')
+      || layerBoundaryReached;
     const leavesTrackedFeature = Boolean(activeFeatureKind) && line.startsWith('; FEATURE:') && !trackedFeatureKind;
     const switchesTrackedFeature = Boolean(activeFeatureKind)
       && Boolean(trackedFeatureKind)
       && trackedFeatureKind !== activeFeatureKind;
+    const endsTrackedFeatureAtBoundary = Boolean(activeFeatureKind) && hardFeatureBoundary;
+
+    if (trackedFeatureKind) {
+      runtimeState.captureLastTravelBeforeGlue = false;
+    }
 
     if (line.includes('; FEATURE: Ironing')) {
       const ironingDecision = classifyIroningFeature(nextLine, config, currentZ);
@@ -963,8 +1487,8 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
       }
     }
 
-    if (leavesTrackedFeature || switchesTrackedFeature) {
-      result.push(...buildTrackedFeatureInjectionWithReport({
+    if (leavesTrackedFeature || switchesTrackedFeature || endsTrackedFeatureAtBoundary) {
+      const preparedInjection = prepareTrackedFeatureInjectionWithReport({
         interfaceBuffer,
         featureKind: activeFeatureKind,
         startLine: activeFeatureStartLine,
@@ -973,7 +1497,14 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
         config,
         runtimeState,
         report
-      }));
+      });
+
+      if (preparedInjection.mode === 'immediate') {
+        result.push(...preparedInjection.lines);
+      } else if (preparedInjection.mode === 'pending' && preparedInjection.interfaceLines.length > 0) {
+        pendingLayerInterfaceBuffer.push(...preparedInjection.interfaceLines);
+      }
+
       interfaceBuffer = [];
       activeFeatureKind = null;
       activeFeatureStartLine = 0;
@@ -986,7 +1517,51 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
       }
     }
 
+    if (
+      line.startsWith('; CHANGE_LAYER')
+      && config.wiping.haveWipingComponents
+      && !runtimeState.firstTowerBaseInjected
+    ) {
+      const firstLayerHeight = runtimeState.firstLayerHeight || runtimeState.currentLayerThickness;
+      const firstLayerSpeed = runtimeState.firstLayerSpeed || 50;
+      const travelSpeed = runtimeState.travelSpeed || config.toolhead.speedLimit || 0;
+
+      if (firstLayerHeight > 0 && travelSpeed > 0) {
+        result.push(...buildTowerBaseLayerGcode({
+          firstLayerHeight,
+          firstLayerSpeed,
+          retractLength: runtimeState.retractLength || 0,
+          towerBaseLayerGcode: config.templates.towerBaseLayerGcode,
+          travelSpeed,
+          wiperX: config.wiping.wiperX || 0,
+          wiperY: config.wiping.wiperY || 0,
+          machineBounds: config.machine.bounds
+        }));
+        runtimeState.firstTowerBaseInjected = true;
+      }
+    }
+
+    if (layerBoundaryReached && pendingLayerInterfaceBuffer.length > 0) {
+      result.push(...buildInterfaceInjection(pendingLayerInterfaceBuffer, currentZ, config, runtimeState));
+      pushReportStep(report, {
+        kind: 'replay',
+        title: 'Emit deferred glue block at layer boundary',
+        human: '命中 layer num 边界后，按 Python 逻辑统一输出本层缓存的涂胶动作。',
+        technical: `Layer boundary line ${lineIndex + 1}; pendingInterfaceLines=${pendingLayerInterfaceBuffer.length}; buildInterfaceInjection()`,
+        data: {
+          line: lineIndex + 1,
+          currentZ,
+          pendingInterfaceLines: pendingLayerInterfaceBuffer.length
+        }
+      });
+      pendingLayerInterfaceBuffer = [];
+    }
+
     result.push(line);
+
+    if (layerBoundaryReached) {
+      runtimeState.captureLastTravelBeforeGlue = true;
+    }
 
     if (activeFeatureKind && line) {
       interfaceBuffer.push(line);
@@ -994,7 +1569,7 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
   }
 
   if (activeFeatureKind && interfaceBuffer.length > 0) {
-    result.push(...buildTrackedFeatureInjectionWithReport({
+    const preparedInjection = prepareTrackedFeatureInjectionWithReport({
       interfaceBuffer,
       featureKind: activeFeatureKind,
       startLine: activeFeatureStartLine,
@@ -1003,7 +1578,27 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
       config,
       runtimeState,
       report
-    }));
+    });
+
+    if (preparedInjection.mode === 'immediate') {
+      result.push(...preparedInjection.lines);
+    } else if (preparedInjection.mode === 'pending' && preparedInjection.interfaceLines.length > 0) {
+      pendingLayerInterfaceBuffer.push(...preparedInjection.interfaceLines);
+    }
+  }
+
+  if (pendingLayerInterfaceBuffer.length > 0) {
+    result.push(...buildInterfaceInjection(pendingLayerInterfaceBuffer, currentZ, config, runtimeState));
+    pushReportStep(report, {
+      kind: 'replay',
+      title: 'Emit deferred glue block at EOF fallback',
+      human: '文件末尾仍有待输出的涂胶缓存，已执行兜底输出。',
+      technical: `EOF fallback; pendingInterfaceLines=${pendingLayerInterfaceBuffer.length}; buildInterfaceInjection()`,
+      data: {
+        currentZ,
+        pendingInterfaceLines: pendingLayerInterfaceBuffer.length
+      }
+    });
   }
 
   const outputGcode = applyPostProcessingPasses(result.join('\n'), config);
@@ -1030,12 +1625,49 @@ function buildInterfaceInjection(interfaceBuffer, currentZ, config, runtimeState
   const lines = [];
   const offset = config.toolhead.offset || { x: 0, y: 0, z: 0 };
   const speedLimit = Math.floor((config.toolhead.speedLimit || 0) * 60);
+  const useWipingTowers = Boolean(config.wiping.haveWipingComponents);
+  const travelSpeed = Math.floor((runtimeState.travelSpeed || config.toolhead.speedLimit || 0) * 60);
+  const glueWaitingPointX = getGlueWaitingPointX(runtimeState.machineType);
+  const mkpRetract = parseMountRetractValue(config.toolhead.customMountGcode);
+  const lastLayerHeight = Number.isFinite(runtimeState.lastLayerHeight)
+    ? runtimeState.lastLayerHeight
+    : Math.max(currentZ - (runtimeState.currentLayerThickness || 0), 0);
+  const risingHeight = roundTo(currentZ < 3 ? currentZ + offset.z + 6 : currentZ + offset.z + 3, 3).toFixed(3);
+  const mountedHoverHeight = roundTo(lastLayerHeight + offset.z + 3, 3).toFixed(3);
+  const glueHeight = roundTo(lastLayerHeight + offset.z, 3).toFixed(3);
+  const postGlueLiftHeight = roundTo(currentZ + offset.z + 3, 3).toFixed(3);
 
   lines.push('; ===== MKP Support Electron Glueing Start =====');
   lines.push('M106 S255 ; enable cooling during glueing');
   appendNozzleCooldown(lines, config, runtimeState);
-  lines.push(`G1 Z${(currentZ + offset.z + 3).toFixed(3)} ; lift to avoid collision`);
-  pushMultilineGcode(lines, config.toolhead.customMountGcode);
+
+  if (travelSpeed > 0 && glueWaitingPointX > 0 && mkpRetract !== 0) {
+    lines.push(
+      `G1 X${glueWaitingPointX.toFixed(3)} Z${roundTo(currentZ + 1, 3).toFixed(3)} E${formatCompactNumber(mkpRetract)} F${travelSpeed}`
+    );
+  }
+
+  lines.push(`G1 Z${risingHeight} ; lift to avoid collision`);
+  pushExpandedMountGcode(lines, config.toolhead.customMountGcode, currentZ, offset.z);
+
+  if (lastLayerHeight > 0 || offset.z !== 0) {
+    lines.push(`G1 Z${mountedHoverHeight}`);
+  }
+
+  if (travelSpeed > 0 && runtimeState.lastTravelMove) {
+    lines.push(`G1 F${travelSpeed}`);
+    lines.push(
+      processGcodeOffset(
+        runtimeState.lastTravelMove,
+        offset.x,
+        offset.y,
+        offset.z + 3,
+        'normal',
+        { machineBounds: config.machine.bounds }
+      )
+    );
+    lines.push(`G1 Z${glueHeight}`);
+  }
 
   if (speedLimit > 0) {
     lines.push(`G1 F${speedLimit}`);
@@ -1050,22 +1682,28 @@ function buildInterfaceInjection(interfaceBuffer, currentZ, config, runtimeState
         continue;
       }
 
+      if (travelSpeed > 0) {
+        lines.push(`G1 F${travelSpeed}`);
+      }
       lines.push(`G1 Z${(currentZ + offset.z + 3).toFixed(3)} ; avoid spoiling before the next interface segment`);
       lines.push(
         `${processGcodeOffset(
           nextMove,
           offset.x,
           offset.y,
-          offset.z,
+          offset.z + 3,
           'normal',
           { machineBounds: config.machine.bounds }
         )} ; jump to the next interface segment`
       );
-      lines.push(`G1 Z${(currentZ + offset.z).toFixed(3)} ; resume glue height`);
+      lines.push(`G1 Z${glueHeight} ; resume glue height`);
+      if (speedLimit > 0) {
+        lines.push(`G1 F${speedLimit}`);
+      }
       continue;
     }
 
-    if (isInterfaceMotionLine(bufferedLine)) {
+    if (isInterfaceMotionLine(bufferedLine) || isInterfaceZOnlyLine(bufferedLine)) {
       lines.push(
         processGcodeOffset(
           bufferedLine,
@@ -1079,10 +1717,36 @@ function buildInterfaceInjection(interfaceBuffer, currentZ, config, runtimeState
     }
   }
 
-  pushExpandedUnmountGcode(lines, config.toolhead.customUnmountGcode, runtimeState);
+  lines.push(';Glueing Finished');
+  if (travelSpeed > 0) {
+    lines.push(`G1 F${travelSpeed}`);
+  }
+  lines.push(`G1 Z${postGlueLiftHeight}`);
+  lines.push(`;Lift-z:${postGlueLiftHeight}`);
+
+  if (runtimeState.firstGlueSettlingPending) {
+    lines.push(';Waiting for Glue Settling');
+    lines.push(`G4 P${FIRST_GLUE_SETTLING_MS}`);
+    runtimeState.firstGlueSettlingPending = false;
+  }
+
+  lines.push(';Unmounting Toolhead');
+
+  const delayedTowerRefillLines = pushExpandedUnmountGcode(
+    lines,
+    config.toolhead.customUnmountGcode,
+    runtimeState,
+    {
+      useWipingTowers
+    }
+  );
   lines.push(';Toolhead Unmounted');
-  appendPostGlueRecovery(lines, currentZ, config, runtimeState);
-  lines.push(`G1 Z${currentZ.toFixed(3)} ; resume print height`);
+  appendPostGlueRecovery(lines, currentZ, config, runtimeState, delayedTowerRefillLines);
+
+  if (!useWipingTowers) {
+    lines.push(`G1 Z${currentZ.toFixed(3)} ; resume print height`);
+  }
+
   lines.push('; ===== MKP Support Electron Glueing End =====');
 
   return lines;
@@ -1108,7 +1772,9 @@ function appendNozzleCooldown(target, config, runtimeState) {
   target.push(`M104 S${nozzleSwitchTemperature - 30}`);
 }
 
-function pushExpandedUnmountGcode(target, block, runtimeState = {}) {
+function pushExpandedUnmountGcode(target, block, runtimeState = {}, options = {}) {
+  const useWipingTowers = Boolean(options.useWipingTowers);
+  const delayedTowerRefillLines = [];
   const lines = String(block || '')
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
@@ -1125,11 +1791,24 @@ function pushExpandedUnmountGcode(target, block, runtimeState = {}) {
       continue;
     }
 
+    if (useWipingTowers) {
+      if (line.includes(';Brush') || line.includes(';Wipe')) {
+        continue;
+      }
+
+      if (isStandalonePositiveExtrusionLine(line)) {
+        delayedTowerRefillLines.push(line);
+        continue;
+      }
+    }
+
     target.push(line);
   }
+
+  return delayedTowerRefillLines;
 }
 
-function appendPostGlueRecovery(target, currentZ, config, runtimeState) {
+function appendPostGlueRecovery(target, currentZ, config, runtimeState, delayedTowerRefillLines = []) {
   const nozzleSwitchTemperature = runtimeState.nozzleSwitchTemperature;
   const useWipingTowers = Boolean(config.wiping.haveWipingComponents);
   const userDryTime = config.wiping.userDryTime || 0;
@@ -1160,6 +1839,13 @@ function appendPostGlueRecovery(target, currentZ, config, runtimeState) {
     )
   );
   target.push(';Prepare for next tower');
+  target.push(...buildTowerPreparationTravelGcode({
+    currentLayerHeight: currentZ,
+    filamentType: runtimeState.filamentType,
+    machineBounds: config.machine.bounds,
+    wiperX: config.wiping.wiperX || 0,
+    wiperY: config.wiping.wiperY || 0
+  }));
 
   if (config.wiping.nozzleCoolingFlag && Number.isFinite(nozzleSwitchTemperature)) {
     if (userDryTime !== 0) {
@@ -1174,20 +1860,9 @@ function appendPostGlueRecovery(target, currentZ, config, runtimeState) {
     target.push(`G4 P${Math.round(userDryTime * 1000)}`);
   }
 
-  target.push(...buildWipingTowerLayerGcode({
-    currentLayerHeight: currentZ,
-    localLayerThickness: runtimeState.currentLayerThickness || 0,
-    machineBounds: config.machine.bounds,
-    nozzleDiameter: config.machine.nozzleDiameter || 0.4,
-    retractLength: runtimeState.retractLength || 0,
-    switchTowerType: config.wiping.switchTowerType || 1,
-    towerHeight: currentZ,
-    travelSpeed: config.toolhead.speedLimit || 0,
-    wipeTowerPrintSpeed: config.wiping.wipeTowerPrintSpeed || 0,
-    wipingGcode: config.templates.wipingGcode,
-    wiperX: config.wiping.wiperX || 0,
-    wiperY: config.wiping.wiperY || 0
-  }));
+  if (delayedTowerRefillLines.length > 0) {
+    target.push(...delayedTowerRefillLines);
+  }
 }
 
 function resolveWipingTowerPrintSpeedMmPerSec(switchTowerType, wipeTowerPrintSpeed) {
@@ -1388,12 +2063,28 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
   const nozzleDiameter = config.machine.nozzleDiameter || 0.4;
   let currentLayerHeight = 0;
   let currentThickness = 0;
+  let firstLayerHeight = 0;
+  let retractLength = 0;
   let suggestedRatio = 1;
   let thickBridgeActive = false;
   let supportActive = false;
+  let travelSpeed = config.toolhead.speedLimit || 0;
+  let pendingTowerInjection = false;
 
   for (const rawLine of lines) {
     let line = rawLine.trimEnd();
+
+    if (line.startsWith('; initial_layer_print_height =')) {
+      firstLayerHeight = numStrip(line)[0] || firstLayerHeight;
+    }
+
+    if (line.startsWith('; retraction_length =')) {
+      retractLength = numStrip(line)[0] || retractLength;
+    }
+
+    if (line.startsWith('; travel_speed =')) {
+      travelSpeed = numStrip(line)[0] || travelSpeed;
+    }
 
     if (line.startsWith('; Z_HEIGHT:')) {
       currentLayerHeight = numStrip(line)[0] || currentLayerHeight;
@@ -1422,6 +2113,10 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
         && !line.includes('; FEATURE: Support interface');
     }
 
+    if (config.wiping.haveWipingComponents && line.includes(';Prepare for next tower')) {
+      pendingTowerInjection = true;
+    }
+
     if (thickBridgeActive) {
       line = scaleExtrusion(line, suggestedRatio, {
         appendComment: ';MKP thick bridge',
@@ -1431,6 +2126,31 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
 
     if (supportActive && currentLayerHeight > 0.3 && Math.abs(multiplier - 1) > 0.01) {
       line = scaleExtrusion(line, multiplier);
+    }
+
+    // Python prints the follow-up tower shell in its second pass when layer progress updates.
+    if (
+      pendingTowerInjection
+      && config.wiping.haveWipingComponents
+      && line.includes('; update layer progress')
+      && currentLayerHeight > 0
+      && (firstLayerHeight <= 0 || roundTo(currentLayerHeight, 3) !== roundTo(firstLayerHeight, 3))
+    ) {
+      result.push(...buildWipingTowerLayerGcode({
+        currentLayerHeight,
+        localLayerThickness: currentThickness || 0,
+        machineBounds: config.machine.bounds,
+        nozzleDiameter: config.machine.nozzleDiameter || 0.4,
+        retractLength,
+        switchTowerType: config.wiping.switchTowerType || 1,
+        towerHeight: currentLayerHeight,
+        travelSpeed,
+        wipeTowerPrintSpeed: config.wiping.wipeTowerPrintSpeed || 0,
+        wipingGcode: config.templates.wipingGcode,
+        wiperX: config.wiping.wiperX || 0,
+        wiperY: config.wiping.wiperY || 0
+      }));
+      pendingTowerInjection = false;
     }
 
     result.push(line);
@@ -1536,8 +2256,30 @@ function processGcodeDetailed(gcodePath, configPath, options = {}) {
     configFormat: options.configFormat,
     configPath,
     inputPath: gcodePath,
-    outputPath
+    outputPath,
+    runtimeInfo: options.runtimeInfo || null
   });
+}
+
+function buildPostprocessStepLogLines(report) {
+  const lines = [];
+  const runtime = report?.runtime || {};
+
+  lines.push(
+    `[INFO] [CLI] report status=${report?.status || 'unknown'} durationMs=${report?.durationMs || 0} engineRevision=${runtime.engineRevision || MKP_ENGINE_RUNTIME_REVISION} input=${report?.inputPath || 'N/A'} output=${report?.outputPath || 'N/A'}`
+  );
+
+  (report?.steps || []).forEach((step, index) => {
+    lines.push(
+      `[INFO] [CLI] step ${index + 1}/${report.steps.length} kind=${step.kind || 'info'} title=${step.title || 'Untitled'} technical=${step.technical || ''}`
+    );
+
+    if (step.data) {
+      lines.push(`[INFO] [CLI] step ${index + 1} data=${JSON.stringify(step.data)}`);
+    }
+  });
+
+  return lines;
 }
 
 function buildPostprocessTraceExport(report, mode = 'technical') {
@@ -1553,6 +2295,12 @@ function buildPostprocessTraceExport(report, mode = 'technical') {
   lines.push(`- Output: ${report?.outputPath || 'N/A'}`);
   lines.push(`- Config: ${report?.configPath || 'N/A'}`);
   lines.push(`- DurationMs: ${report?.durationMs || 0}`);
+  lines.push(`- EngineRevision: ${report?.runtime?.engineRevision || MKP_ENGINE_RUNTIME_REVISION}`);
+  lines.push(`- EngineModule: ${report?.runtime?.engineModule || 'src/main/mkp_engine.js'}`);
+  lines.push(`- AppVersion: ${report?.runtime?.appVersion || 'N/A'}`);
+  lines.push(`- IsPackaged: ${String(report?.runtime?.isPackaged ?? 'N/A')}`);
+  lines.push(`- ExecPath: ${report?.runtime?.execPath || 'N/A'}`);
+  lines.push(`- AppPath: ${report?.runtime?.appPath || 'N/A'}`);
   lines.push('');
 
   (report?.steps || []).forEach((step, index) => {
@@ -1573,11 +2321,14 @@ function buildPostprocessTraceExport(report, mode = 'technical') {
 
 module.exports = {
   applyPostProcessingPasses,
+  buildPostprocessStepLogLines,
   buildPostprocessTraceExport,
+  buildTowerPreparationTravelGcode,
   buildTowerBaseLayerGcode,
   buildWipingTowerLayerGcode,
   deleteWipe,
   formatXYZEString,
+  getEngineRuntimeMetadata,
   getPseudoRandom,
   hasValidInterfaceSet,
   loadEngineConfig,

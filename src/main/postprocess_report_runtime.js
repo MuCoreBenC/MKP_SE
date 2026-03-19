@@ -31,6 +31,75 @@ function resolvePostprocessOutputPath(gcodePath) {
   return String(gcodePath || '').trim();
 }
 
+function escapeRegExp(text) {
+  return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function collectLegacyPostprocessArtifactPaths(gcodePath, options = {}) {
+  const normalizedPath = String(gcodePath || '').trim();
+  if (!normalizedPath) {
+    return [];
+  }
+
+  const tempDir = options.tempDir || os.tmpdir();
+  const paths = new Set();
+  const addPath = (candidatePath) => {
+    const nextPath = String(candidatePath || '').trim();
+    if (!nextPath || nextPath === normalizedPath) {
+      return;
+    }
+
+    paths.add(nextPath);
+  };
+
+  if (/\.gcode$/i.test(normalizedPath)) {
+    addPath(normalizedPath.replace(/\.gcode$/i, '_processed.gcode'));
+    addPath(`${normalizedPath}_processed.gcode`);
+    addPath(`${normalizedPath}_Output.gcode`);
+    addPath(normalizedPath.replace(/\.gcode$/i, '_Output.gcode'));
+  } else {
+    addPath(`${normalizedPath}_processed.gcode`);
+    addPath(`${normalizedPath}_Output.gcode`);
+  }
+
+  const baseName = sanitizeBaseName(normalizedPath).replace(/\.gcode$/i, '') || 'part';
+  const reportPattern = new RegExp(`^mkp_postprocess_report_.*_${escapeRegExp(baseName)}\\.json$`, 'i');
+
+  try {
+    if (fs.existsSync(tempDir)) {
+      fs.readdirSync(tempDir).forEach((entryName) => {
+        if (reportPattern.test(entryName)) {
+          addPath(path.join(tempDir, entryName));
+        }
+      });
+    }
+  } catch (error) {}
+
+  return Array.from(paths);
+}
+
+function cleanupLegacyPostprocessArtifacts(gcodePath, options = {}) {
+  const preserve = new Set(
+    (options.preservePaths || []).map((item) => String(item || '').trim()).filter(Boolean)
+  );
+
+  const removedPaths = [];
+  collectLegacyPostprocessArtifactPaths(gcodePath, options).forEach((artifactPath) => {
+    if (preserve.has(artifactPath)) {
+      return;
+    }
+
+    try {
+      if (fs.existsSync(artifactPath)) {
+        fs.unlinkSync(artifactPath);
+        removedPaths.push(artifactPath);
+      }
+    } catch (error) {}
+  });
+
+  return removedPaths;
+}
+
 function writePostprocessReportState(reportPath, state) {
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
   fs.writeFileSync(reportPath, JSON.stringify(state, null, 2), 'utf8');
@@ -68,6 +137,7 @@ function createPendingPostprocessReportState(meta = {}) {
     outputPath: meta.outputPath || null,
     configPath: meta.configPath || null,
     configFormat: meta.configFormat || null,
+    runtime: meta.runtime || null,
     summary: {
       totalInputLines: 0,
       totalOutputLines: 0,
@@ -107,6 +177,7 @@ function createFailedPostprocessReportState(meta = {}, error) {
     outputPath: meta.outputPath || null,
     configPath: meta.configPath || null,
     configFormat: meta.configFormat || null,
+    runtime: meta.runtime || null,
     summary: {
       totalInputLines: 0,
       totalOutputLines: 0,
@@ -135,6 +206,8 @@ function createFailedPostprocessReportState(meta = {}, error) {
 }
 
 module.exports = {
+  cleanupLegacyPostprocessArtifacts,
+  collectLegacyPostprocessArtifactPaths,
   createFailedPostprocessReportState,
   createPendingPostprocessReportState,
   createPostprocessReportFilePath,

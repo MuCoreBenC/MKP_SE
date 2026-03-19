@@ -81,6 +81,169 @@
    - `Repetition`
 5. Expose stable main-process APIs for renderer/GUI consumption once the config contract is less fluid.
 
+## Current Repair Slice: Python Two-Stage Tower Recovery
+- Goal: stop treating wiping-tower recovery as a single inline block and match the Python two-pass state machine.
+- Why: the current JS output can still leave unwanted extrusion on the way to the tower and can rebuild only part of the tower shell because it resumes too early.
+- TDD rule: tests define the 5-step recovery order first, then `mkp_engine.js` is allowed to change.
+
+### 5-step repair sequence
+1. Scan and clean a valid support-interface or support-surface segment.
+   - Reuse `deleteWipe()` / `hasValidInterfaceSet()` parity.
+   - Replay the glue path with `E` stripped in normal mode.
+2. Finish the first-pass glue block without printing the tower shell.
+   - Keep mount, cooldown, glue replay, unmount, and `;Prepare for next tower`.
+   - Keep the dry-wipe preparation travel after the marker.
+   - Do not emit `; FEATURE: Inner wall`, `;Leaving Wiping Tower`, or `resume print height` in tower mode.
+3. Arm a pending tower recovery state when `;Prepare for next tower` appears.
+   - This is a state transition only.
+   - Repeated markers before the next layer-progress update should still collapse into one pending recovery.
+4. Inject the follow-up tower shell only when `; update layer progress` is reached.
+   - Use the latest parsed `; Z_HEIGHT:` and `; LAYER_HEIGHT:` values.
+   - Emit the full Python-like tower shell before the raw `; update layer progress` line.
+5. Hand control back to the slicer-native recovery path unchanged.
+   - After `;Leaving Wiping Tower`, keep the original travel, Z restore, and prime moves.
+   - Do not invent a separate JS-side `resume print height` branch for tower mode.
+
+### TDD checkpoints for this slice
+- First-pass glue recovery stops at `;Prepare for next tower` plus dry-wipe travel.
+- Delayed tower injection fires before `; update layer progress`.
+- The full default tower shell still prints in slow-line mode.
+- Tower-mode unmount filtering still delays refill until after dry-wipe travel.
+- Original slicer recovery travel and prime remain after leaving the tower.
+
+## Current Delivery Goal
+- Finish the normal `Support interface` branch first.
+- Keep Orca ironing-path expansion out of this repair slice until the base support-interface path is stable.
+- Treat "no `XY+E` extrusion on the trip to the wiping tower" as a release-blocking rule.
+
+## End-to-End Flow To Implement And Verify
+1. Normalize preset input into `EngineConfig`.
+2. Parse runtime state from raw G-code:
+   - `Z_HEIGHT`
+   - `LAYER_HEIGHT`
+   - `travel_speed`
+   - `retraction_length`
+   - `nozzle_temperature`
+   - fan speed
+3. Detect only slicer-declared normal support targets for this slice:
+   - Bambu `; FEATURE: Support interface`
+4. Close each candidate segment with Python-compatible boundaries:
+   - next `; FEATURE:`
+   - `; CHANGE_LAYER`
+   - `;LAYER_CHANGE`
+   - `; layer num/total_layer_count`
+5. Clean and validate the segment:
+   - `deleteWipe()`
+   - `;ZJUMP_START`
+   - `hasValidInterfaceSet()`
+6. Queue the cleaned segment instead of injecting immediately.
+7. Emit the first-pass glue block only when `; layer num/total_layer_count` is reached:
+   - mount
+   - cooldown if enabled
+   - replay the support-interface path with `E` stripped
+   - unmount
+   - `;Prepare for next tower`
+   - dry-wipe travel
+   - no inline tower shell
+8. In second-pass recovery, arm a pending tower state when `;Prepare for next tower` appears.
+9. Inject the tower shell only when `; update layer progress` is reached.
+10. Preserve slicer-native travel, Z restore, and prime after tower leave.
+11. Write processed G-code and structured report output.
+
+## TDD Matrix
+### Unit TDD
+- Config normalization:
+  - JSON/TOML parity
+  - legacy wiping-tower toggle compatibility
+  - legacy template upgrade
+- Scan-stage behavior:
+  - `Support interface` detection
+  - multi-block aggregation within one layer
+  - invalid segment rejection
+  - `deleteWipe()` cleanup and `;ZJUMP_START`
+- Replay-stage behavior:
+  - glue replay strips `E`
+  - z-jump travel between sub-segments
+  - AUTO fan replay
+  - cooldown and dry-time recovery
+- Tower recovery behavior:
+  - first pass stops at `;Prepare for next tower`
+  - no `resume print height` in tower mode
+  - delayed tower shell before `; update layer progress`
+  - slow-line vs fast-line speed selection
+  - no `XY+E` extrusion between tower-prepare marker and glue-block end
+
+### Integration TDD
+- CLI parsing:
+  - `--Json`
+  - `--Toml`
+  - missing args fail clearly
+- Structured report generation:
+  - engine revision
+  - config snapshot
+  - replay/decision steps
+- Output hygiene:
+  - stale processed artifacts removed before a new run
+  - exported file is from the current run, not an old leftover
+
+### Real-Sample Regression TDD
+- Use the real AppData preset.
+- Run at least 2 user G-code samples through the source engine.
+- For each sample verify:
+  - support-interface injection exists
+  - `;Prepare for next tower` exists when tower mode is active
+  - no `XY+E` extrusion exists between `;Prepare for next tower` and `; ===== MKP Support Electron Glueing End =====`
+  - tower shell appears before `; update layer progress`
+  - slicer recovery travel still exists after tower leave
+
+## Test Rounds
+### Round 1: Fast TDD Loop
+- Command:
+  - `npx vitest run tests/unit/main/mkp-engine.test.ts tests/unit/main/postprocess-report-runtime.test.ts tests/unit/main/main-process-diagnostics.test.ts`
+- Goal:
+  - lock Python parity for support-interface timing and tower recovery order
+- Exit criteria:
+  - all tests green
+
+### Round 2: Source-Level Real Sample Verification
+- Inputs:
+  - real AppData preset
+  - `.227388.15.gcode`
+  - `.227388.16.gcode`
+- Goal:
+  - prove the source engine handles real user data, not only synthetic samples
+- Exit criteria:
+  - no `XY+E` extrusion on the tower-prep travel segment
+  - tower recovery markers appear in the correct order
+
+### Round 3: Packaged App Smoke Verification
+- Goal:
+  - confirm the installed build is actually running the current engine revision
+- Required checks:
+  - main-process log shows `bootstrap mode=cli`
+  - CLI step log lines are visible
+  - exported G-code is freshly generated
+  - packaged output matches source-build expectations for the same preset and sample
+
+## Acceptance Criteria For This Slice
+- Normal `Support interface` replay is stable.
+- Glue injection happens at `; layer num/total_layer_count`, not immediately on feature exit.
+- Tower mode never leaves `XY+E` extrusion on the trip to the wiping tower.
+- Tower shell is emitted in the delayed second-pass stage before `; update layer progress`.
+- Unit tests plus real-sample source checks pass before rebuild.
+
+## Latest Validation Status
+- 2026-03-19 Round 1:
+  - `npx vitest run tests/unit/main/mkp-engine.test.ts tests/unit/main/postprocess-report-runtime.test.ts tests/unit/main/main-process-diagnostics.test.ts`
+  - Result: `47 passed`
+- 2026-03-19 Round 2:
+  - real preset + `.227388.15.gcode`
+  - real preset + `.227388.16.gcode`
+  - Result:
+    - support-interface injection detected in both samples
+    - tower shell appears before `; update layer progress`
+    - `XY+E` extrusion count between `;Prepare for next tower` and glue-block end is `0` for both samples
+
 ## Test Strategy
 - Keep extending [`tests/unit/main/mkp-engine.test.ts`](d:/trae/MKP_SE/tests/unit/main/mkp-engine.test.ts) as the primary engine spec.
 - Prioritize behavior tests over source-shape tests.

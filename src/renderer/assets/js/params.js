@@ -32,6 +32,7 @@ const PARAM_TEMPLATE_DEFAULTS = {
 };
 
 const PARAM_VALUE_DEFAULTS = {
+  'wiping.have_wiping_components': true,
   'wiping.switch_tower_type': 1
 };
 
@@ -157,6 +158,33 @@ function normalizeFlatState(flatState = {}) {
     normalized[key] = normalizeParamValueByKey(key, flatState[key]);
   });
   return normalized;
+}
+
+function resolveEffectiveWipingTowerValueFromFlat(flatData = {}) {
+  const explicitKeys = [
+    'wiping.use_wiping_towers',
+    'wiping.useWipingTowers',
+    'wiping.enable_wiping_tower',
+    'wiping.enableWipingTower'
+  ];
+
+  for (const key of explicitKeys) {
+    if (typeof flatData[key] === 'boolean') {
+      return flatData[key];
+    }
+  }
+
+  return true;
+}
+
+function applyWipingTowerParamCompatibility(flatData = {}) {
+  const nextFlat = { ...flatData };
+  const effectiveTowerValue = resolveEffectiveWipingTowerValueFromFlat(flatData);
+
+  nextFlat['wiping.have_wiping_components'] = effectiveTowerValue;
+  nextFlat['wiping.use_wiping_towers'] = effectiveTowerValue;
+
+  return normalizeFlatState(nextFlat);
 }
 
 function cloneParamFocus(focus) {
@@ -999,6 +1027,8 @@ function buildRenderableParamState(flatData = {}) {
     }
   });
 
+  injectedFlat['wiping.have_wiping_components'] = resolveEffectiveWipingTowerValueFromFlat(injectedFlat);
+
   PARAM_TEMPLATE_FIELD_ORDER.forEach((templateKey) => {
     injectedFlat[templateKey] = normalizeParamValueByKey(templateKey, resolveTemplateFieldValue(flatData, templateKey));
   });
@@ -1039,7 +1069,7 @@ function buildDiagnosticsPayload(flatData, presetPath, fileName) {
       customUnmountGcodeLines: countParamLines('toolhead.custom_unmount_gcode', flatData['toolhead.custom_unmount_gcode'])
     },
     wiping: {
-      haveWipingComponents: Boolean(presetData.wiping?.have_wiping_components),
+      haveWipingComponents: resolveEffectiveWipingTowerValueFromFlat(flatData),
       switchTowerType: presetData.wiping?.switch_tower_type ?? 1,
       wiperX: presetData.wiping?.wiper_x ?? null,
       wiperY: presetData.wiping?.wiper_y ?? null,
@@ -1437,7 +1467,7 @@ async function saveAllDynamicParams(options = {}) {
   let resetEngine = setButtonStatus(saveBtn, '110px', '保存中', spinIcon, 'btn-expand-theme');
 
   const snapshot = rememberParamSnapshot({ force: true }) || collectParamSnapshotFromDom();
-  const flatUpdates = snapshot.flat;
+  const flatUpdates = applyWipingTowerParamCompatibility(snapshot.flat);
 
   const startTime = Date.now();
   const result = await window.mkpAPI.overwritePreset(presetPath, unflattenObject(flatUpdates));

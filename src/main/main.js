@@ -11,11 +11,14 @@ const {
   buildUpdaterFailureLogMessage
 } = require('./main_process_diagnostics');
 const {
+  buildPostprocessStepLogLines,
   buildPostprocessTraceExport,
+  getEngineRuntimeMetadata,
   parseCliArguments,
   processGcodeDetailed
 } = require('./mkp_engine');
 const {
+  cleanupLegacyPostprocessArtifacts,
   createFailedPostprocessReportState,
   createPendingPostprocessReportState,
   createPostprocessReportFilePath,
@@ -51,6 +54,14 @@ const mainProcessDiagnosticsState = {
   lastPage: 'startup',
   lastRendererLog: null
 };
+
+function getSafeAppVersion() {
+  try {
+    return app.getVersion();
+  } catch (error) {
+    return null;
+  }
+}
 
 function resolveMainProcessMode() {
   if (isPostprocessReportMode) {
@@ -129,6 +140,21 @@ function captureMainProcessContext(extra = {}) {
   };
 }
 
+function getMainProcessRuntimeInfo(extra = {}) {
+  return getEngineRuntimeMetadata({
+    appVersion: getSafeAppVersion(),
+    isPackaged: app.isPackaged,
+    execPath: process.execPath,
+    appPath: safelyGetAppPath(),
+    resourcesPath: process.resourcesPath || null,
+    pid: process.pid,
+    platform: process.platform,
+    arch: process.arch,
+    mode: resolveMainProcessMode(),
+    ...extra
+  });
+}
+
 function logMainProcessFailure(kind, errorLike, context = {}) {
   appendMainProcessLog(
     buildCrashLogMessage(kind, errorLike, {
@@ -184,6 +210,9 @@ app.on('child-process-gone', (event, details) => {
 
 appendMainProcessLog(
   `[INFO] [MainProcess] bootstrap mode=${resolveMainProcessMode()} argv=${JSON.stringify(process.argv)}`
+);
+appendMainProcessLog(
+  `[INFO] [MainProcess] runtime=${JSON.stringify(getMainProcessRuntimeInfo())}`
 );
 
 function getProjectRootPath() {
@@ -1132,24 +1161,54 @@ if (isPostprocessReportMode) {
       const cliArgs = parseCliArguments(process.argv);
       const gcodePath = cliArgs.gcodePath;
       const outputPath = resolvePostprocessOutputPath(gcodePath);
+      const runtimeInfo = getMainProcessRuntimeInfo({ mode: 'cli' });
+      const removedArtifacts = cleanupLegacyPostprocessArtifacts(gcodePath, {
+        preservePaths: [outputPath]
+      });
       const reportPath = createPostprocessReportFilePath(gcodePath);
+
+      appendMainProcessLog(
+        `[INFO] [CLI] start ${JSON.stringify({
+          runtime: runtimeInfo,
+          configFormat: cliArgs.configFormat,
+          configPath: cliArgs.configPath,
+          inputPath: gcodePath,
+          outputPath,
+          reportPath
+        })}`
+      );
+
+      if (removedArtifacts.length > 0) {
+        appendMainProcessLog(
+          `[INFO] [CLI] Removed stale postprocess artifacts: ${JSON.stringify(removedArtifacts)}`
+        );
+      }
 
       writePostprocessReportState(reportPath, createPendingPostprocessReportState({
         configFormat: cliArgs.configFormat,
         configPath: cliArgs.configPath,
         inputPath: gcodePath,
-        outputPath
+        outputPath,
+        runtime: runtimeInfo
       }));
       launchDetachedPostprocessReportViewer(app, reportPath);
 
       const startTime = Date.now();
       const detailedResult = processGcodeDetailed(gcodePath, cliArgs.configPath, {
         configFormat: cliArgs.configFormat,
-        outputPath
+        outputPath,
+        runtimeInfo
       });
       const processedGcode = detailedResult.outputGcode;
 
       fs.writeFileSync(outputPath, processedGcode);
+      appendMainProcessLog(
+        `[INFO] [CLI] wrote output=${JSON.stringify({
+          outputPath,
+          bytes: Buffer.byteLength(processedGcode, 'utf8'),
+          reportPath
+        })}`
+      );
       writePostprocessReportState(reportPath, {
         ...detailedResult.report,
         outputPath,
@@ -1159,6 +1218,7 @@ if (isPostprocessReportMode) {
           autoCloseSeconds: 10
         }
       });
+      appendMainProcessLog(buildPostprocessStepLogLines(detailedResult.report).join('\n'));
       
       const costTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
@@ -1173,16 +1233,21 @@ if (isPostprocessReportMode) {
       setTimeout(() => app.quit(), 300);
     } catch (error) {
       console.error("[E604] CLI exec err: " + error.message);
+      appendMainProcessLog(
+        `[ERROR] [CLI] failed message=${JSON.stringify(error.message || String(error))} stack=${JSON.stringify(error.stack || '')}`
+      );
       try {
         const cliArgs = parseCliArguments(process.argv);
         const gcodePath = cliArgs.gcodePath;
         const outputPath = resolvePostprocessOutputPath(gcodePath);
         const reportPath = createPostprocessReportFilePath(gcodePath);
+        const runtimeInfo = getMainProcessRuntimeInfo({ mode: 'cli' });
         writePostprocessReportState(reportPath, createFailedPostprocessReportState({
           configFormat: cliArgs.configFormat,
           configPath: cliArgs.configPath,
           inputPath: gcodePath,
-          outputPath
+          outputPath,
+          runtime: runtimeInfo
         }, error));
         launchDetachedPostprocessReportViewer(app, reportPath);
       } catch (reportError) {}
