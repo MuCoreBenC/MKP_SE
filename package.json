@@ -80,6 +80,7 @@
       }
     ],
     "win": {
+      "icon": "src/renderer/assets/icons/logo-main.ico",
       "target": [
         "nsis"
       ]
@@ -91,7 +92,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "MKP SupportE"
+      "shortcutName": "MKP SupportE",
+      "installerIcon": "src/renderer/assets/icons/logo-main.ico",
+      "uninstallerIcon": "src/renderer/assets/icons/logo-main.ico",
+      "installerHeaderIcon": "src/renderer/assets/icons/logo-main.ico"
     }
   }
 }

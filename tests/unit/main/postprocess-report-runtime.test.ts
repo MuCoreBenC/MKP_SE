@@ -6,16 +6,23 @@ import { afterEach, describe, expect, it } from 'vitest';
 const {
   cleanupLegacyPostprocessArtifacts,
   collectLegacyPostprocessArtifactPaths,
+  createFailedPostprocessReportState,
+  createPendingPostprocessReportState,
   createPostprocessReportFilePath,
-  resolvePostprocessOutputPath
+  readPostprocessReportState,
+  resolvePostprocessOutputPath,
+  writePostprocessReportState
 } = require('../../../src/main/postprocess_report_runtime');
 
-const tempDirs = [];
+const tempDirs: string[] = [];
 
 describe('postprocess report runtime helpers', () => {
   afterEach(() => {
     while (tempDirs.length > 0) {
-      fs.rmSync(tempDirs.pop(), { recursive: true, force: true });
+      const tempDir = tempDirs.pop();
+      if (tempDir) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     }
   });
 
@@ -94,5 +101,68 @@ describe('postprocess report runtime helpers', () => {
     expect(fs.existsSync(unrelatedPath)).toBe(true);
     expect(fs.existsSync(staleProcessedPath)).toBe(false);
     expect(fs.existsSync(staleReportPath)).toBe(false);
+  });
+
+  it('creates a pending viewer snapshot that auto-closes after 10 seconds and keeps the source meta for the report window', () => {
+    const state = createPendingPostprocessReportState({
+      configFormat: 'json',
+      configPath: 'C:\\preset.json',
+      inputPath: 'C:\\part.gcode',
+      outputPath: 'C:\\part.gcode',
+      runtime: {
+        engineRevision: 'test-rev'
+      }
+    });
+
+    expect(state.status).toBe('running');
+    expect(state.inputPath).toBe('C:\\part.gcode');
+    expect(state.outputPath).toBe('C:\\part.gcode');
+    expect(state.configPath).toBe('C:\\preset.json');
+    expect(state.configFormat).toBe('json');
+    expect(state.runtime).toEqual({ engineRevision: 'test-rev' });
+    expect(state.steps).toHaveLength(1);
+    expect(state.steps[0].technical).toContain('Viewer launched before process completion');
+    expect(state.ui.autoCloseSeconds).toBe(10);
+  });
+
+  it('creates a failed viewer snapshot that disables auto-close and keeps the CLI error message', () => {
+    const state = createFailedPostprocessReportState(
+      {
+        configFormat: 'toml',
+        configPath: 'C:\\preset.toml',
+        inputPath: 'C:\\part.gcode',
+        outputPath: 'C:\\part.gcode'
+      },
+      new Error('Offset X coordinate -5 exceeds machine minimum 0')
+    );
+
+    expect(state.status).toBe('failed');
+    expect(state.configFormat).toBe('toml');
+    expect(state.steps).toHaveLength(1);
+    expect(state.steps[0].technical).toContain('CLI error: Offset X coordinate -5 exceeds machine minimum 0');
+    expect(state.ui.autoCloseSeconds).toBe(0);
+  });
+
+  it('writes and reads report snapshots without losing structured runtime and UI fields', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mkp-postprocess-runtime-'));
+    tempDirs.push(tempDir);
+    const reportPath = path.join(tempDir, 'report.json');
+    const state = {
+      status: 'completed',
+      summary: {
+        injectedSegments: 2
+      },
+      runtime: {
+        engineRevision: 'rev-1',
+        mode: 'cli'
+      },
+      ui: {
+        autoCloseSeconds: 10
+      }
+    };
+
+    writePostprocessReportState(reportPath, state);
+
+    expect(readPostprocessReportState(reportPath)).toEqual(state);
   });
 });

@@ -80,8 +80,32 @@
           </div>
 
           <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <label class="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3"><div><div class="text-sm font-medium text-gray-900">强制更新</div><div class="mt-1 text-xs text-gray-500">只有必要时才开启</div></div><input id="releaseForceUpdateInput" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-500"></label>
-            <label class="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3"><div><div class="text-sm font-medium text-gray-900">允许回退</div><div class="mt-1 text-xs text-gray-500">版本页是否允许回退</div></div><input id="releaseCanRollbackInput" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-500"></label>
+            <label class="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <div>
+                <div class="text-sm font-medium text-gray-900">强制更新</div>
+                <div class="mt-1 text-xs text-gray-500">只有必要时才开启</div>
+              </div>
+              <div class="settings-toggle-control">
+                <span id="releaseForceUpdateStatus" class="param-switch-status">已关闭</span>
+                <span class="mkp-switch" aria-hidden="true">
+                  <input id="releaseForceUpdateInput" type="checkbox" class="mkp-switch-input">
+                  <span class="mkp-switch-track"></span>
+                </span>
+              </div>
+            </label>
+            <label class="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <div>
+                <div class="text-sm font-medium text-gray-900">允许回退</div>
+                <div class="mt-1 text-xs text-gray-500">版本页是否允许回退</div>
+              </div>
+              <div class="settings-toggle-control">
+                <span id="releaseCanRollbackStatus" class="param-switch-status">已开启</span>
+                <span class="mkp-switch" aria-hidden="true">
+                  <input id="releaseCanRollbackInput" type="checkbox" class="mkp-switch-input">
+                  <span class="mkp-switch-track"></span>
+                </span>
+              </div>
+            </label>
           </div>
         </div>
 
@@ -209,6 +233,7 @@
   </div>
 
   <input id="releaseConfigImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden">
+  <script src="assets/js/file-guards.js"></script>
   <script src="assets/js/release.js"></script>
 </body>
 </html>

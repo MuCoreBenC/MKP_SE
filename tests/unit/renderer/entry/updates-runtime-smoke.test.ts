@@ -12,6 +12,18 @@ describe('updates.js modern runtime smoke', () => {
     expect(source).toMatch(/__getCachedUpdateManifestView__/);
   });
 
+  it('keeps only one active definition for each update runtime entry point', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/updates.js', 'utf8');
+
+    expect((source.match(/function saveUpdateMode\(/g) || []).length).toBe(1);
+    expect((source.match(/function initUpdateModeSetting\(/g) || []).length).toBe(1);
+    expect((source.match(/async function silentCheckForUpdate\(/g) || []).length).toBe(1);
+    expect((source.match(/async function manualCheckAppUpdate\(/g) || []).length).toBe(1);
+    expect((source.match(/function ensureAppUpdatePanel\(/g) || []).length).toBe(1);
+    expect((source.match(/function setAppUpdatePanelState\(/g) || []).length).toBe(1);
+    expect((source.match(/function hideAppUpdatePanel\(/g) || []).length).toBe(1);
+  });
+
   it('uses modern currentVersion state in the final active update badge flow before falling back to APP_REAL_VERSION', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/updates.js', 'utf8');
     const finalBadgeBlock = source.slice(source.lastIndexOf('function hydrateCachedAppUpdateBadge()'));

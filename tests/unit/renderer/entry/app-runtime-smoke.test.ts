@@ -16,6 +16,62 @@ describe('app.js modern runtime smoke', () => {
     expect(block).toMatch(/: legacyActiveFileName;/);
   });
 
+  it('does not leave empty catch blocks in startup and download bootstrap code', () => {
+    const appSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const htmlSource = readFileSync('D:/trae/MKP_SE/src/renderer/index.html', 'utf8');
+
+    expect(appSource).not.toMatch(/catch\s*\([^)]*\)\s*\{\s*\}/);
+    expect(htmlSource).not.toMatch(/catch\s*\([^)]*\)\s*\{\s*\}/);
+  });
+
+  it('reuses one shared fixed-header shell across the fixed-header pages without adding extra section-nav markup outside params/settings', () => {
+    const htmlSource = readFileSync('D:/trae/MKP_SE/src/renderer/index.html', 'utf8');
+    const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
+
+    expect(styleSource).toMatch(/\.page-header-fixed-shell \{\s*padding-bottom: 0 !important;\s*border-bottom-color: var\(--border\) !important;\s*\}/);
+    expect((htmlSource.match(/page-header-fixed-shell/g) || []).length).toBe(8);
+    expect(htmlSource).toMatch(/<div id="page-home"[\s\S]*?<div class="page-header page-header-fixed-shell w-full">/);
+    expect(htmlSource).toMatch(/<div id="page-download"[\s\S]*?<div class="page-header page-header-fixed-shell w-full">/);
+    expect(htmlSource).toMatch(/<div id="page-calibrate"[\s\S]*?<div class="page-header page-header-fixed-shell w-full">/);
+    expect(htmlSource).toMatch(/<div id="page-versions"[\s\S]*?<div class="page-header page-header-fixed-shell w-full">/);
+    expect(htmlSource).toMatch(/<div id="page-faq"[\s\S]*?<div class="page-header page-header-fixed-shell w-full">/);
+    expect(htmlSource).toMatch(/<div id="page-about"[\s\S]*?<div class="page-header page-header-fixed-shell w-full relative">/);
+    expect(htmlSource).not.toMatch(/id="versionsSectionNav"|id="faqSectionNav"|id="aboutSectionNav"/);
+  });
+
+  it('can center floating tooltips over explicit center-aligned anchors such as the wipe-tower preview block', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function positionFloatingTooltip('),
+      source.lastIndexOf('function showFloatingTooltip(')
+    );
+
+    expect(block).toMatch(/const tooltipAlign = String\(/);
+    expect(block).toMatch(/anchor\.dataset\.tooltipAnchorAlign/);
+    expect(block).toMatch(/anchor\.dataset\.tooltipAlign/);
+    expect(block).toMatch(/let left = tooltipAlign === 'center'/);
+    expect(block).toMatch(/anchorRect\.left \+ \(\(anchorRect\.width - tooltipWidth\) \/ 2\)/);
+  });
+
+  it('logs failed preset-manifest fetch candidates instead of silently swallowing them', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('async function fetchCloudPresets('),
+      source.lastIndexOf('async function checkUpdateEngine(')
+    );
+
+    expect(block).toMatch(/Logger\.warn\(`\[O401\] Manifest candidate fetch failed:/);
+  });
+
+  it('logs startup bootstrap failures in index.html instead of silently swallowing them', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/index.html', 'utf8');
+
+    expect(source).toMatch(/\[MKP Boot\] theme mode bootstrap failed/);
+    expect(source).toMatch(/\[MKP Boot\] theme color bootstrap failed/);
+    expect(source).toMatch(/\[MKP Boot\] version theme bootstrap failed/);
+    expect(source).toMatch(/\[MKP Boot\] onboarding bootstrap failed/);
+  });
+
   it('prefers modern download context when re-rendering local presets after handleDownloadOnline succeeds', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
     const block = source.slice(
@@ -109,6 +165,28 @@ describe('app.js modern runtime smoke', () => {
     expect(block).toMatch(/modernView\?\.selectedVersionType \|\| selectedVersion/);
   });
 
+  it('supports a draggable saved XY summary-card layout editor in calibration view', () => {
+    const htmlSource = readFileSync('D:/trae/MKP_SE/src/renderer/index.html', 'utf8');
+    const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
+    const appSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+
+    expect(htmlSource).toMatch(/data-xy-summary-layout-card/);
+    expect(htmlSource).toMatch(/data-xy-summary-drag-handle/);
+    expect(htmlSource).toMatch(/id="xySummaryLayoutSaveBtn"/);
+    expect(styleSource).toMatch(/--xy-summary-base-shift-x: calc\(var\(--xy-stage-center-offset\) \* -1\);/);
+    expect(styleSource).toMatch(/--xy-summary-offset-x: 30px;/);
+    expect(styleSource).toMatch(/transform: translate\(calc\(var\(--xy-summary-base-shift-x\) \+ var\(--xy-summary-offset-x\)\), var\(--xy-summary-offset-y\)\);/);
+    expect(styleSource).toMatch(/\.xy-summary-layout-toolbar/);
+    expect(styleSource).toMatch(/\.xy-summary-drag-handle/);
+    expect(styleSource).toMatch(/\.xy-summary-layout-save\.is-dirty/);
+    expect(appSource).toMatch(/const XY_SUMMARY_LAYOUT_KEY = 'mkp_xy_summary_layout_v1';/);
+    expect(appSource).toMatch(/function bindXYSummaryLayoutEditor\(/);
+    expect(appSource).toMatch(/document\.addEventListener\('pointermove', \(event\) => \{/);
+    expect(appSource).toMatch(/localStorage\.setItem\(XY_SUMMARY_LAYOUT_KEY, JSON\.stringify\(nextLayout\)\);/);
+    expect(appSource).toMatch(/window\.saveXYSummaryLayout = saveXYSummaryLayout;/);
+    expect(appSource).toMatch(/bindXYSummaryLayoutEditor\(\);/);
+  });
+
   it('keeps online-update refresh logic on the same modern download view family as local refresh flows', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
     const block = source.slice(
@@ -139,6 +217,20 @@ describe('app.js modern runtime smoke', () => {
     );
 
     expect(block).toMatch(/restoreHomeSelectionSurfaces\(\);/);
+  });
+
+  it('clears stale version cards and disables download actions when no printer is selected', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function renderDownloadVersions(printerData) {'),
+      source.lastIndexOf('async function renderPresetList(')
+    );
+
+    expect(block).toMatch(/const container = document\.getElementById\('downloadVersionList'\);/);
+    expect(block).toMatch(/if \(!printerData\) \{[\s\S]*container\.innerHTML = '';/);
+    expect(block).toMatch(/if \(!printerData\) \{[\s\S]*clearOnlineListUI\(\);/);
+    expect(block).toMatch(/if \(!printerData\) \{[\s\S]*renderPresetList\(null, null\);/);
+    expect(block).toMatch(/if \(!printerData\) \{[\s\S]*if \(dlBtn\) dlBtn\.disabled = true;[\s\S]*if \(dlHint\) dlHint\.style\.opacity = '1';[\s\S]*return;[\s\S]*\}/);
   });
 
   it('renders the selected brand printer gallery on startup even when restore state has no selected printer', () => {

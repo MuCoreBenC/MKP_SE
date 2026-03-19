@@ -312,7 +312,8 @@ function updateSidebarVersionBadge(version) {
 function syncSidebarSelectionState() {
   const sidebarBrand = document.getElementById('sidebarBrand');
   const sidebarModelName = document.getElementById('sidebarModelName');
-  const brand = getBrandById(selectedBrand);
+  const printerLocation = findPrinterLocation(selectedPrinter);
+  const brand = printerLocation ? getBrandById(printerLocation.brandId) : getBrandById(selectedBrand);
   const printer = selectedPrinter ? getPrinterObj(selectedPrinter) : null;
 
   if (sidebarBrand) {
@@ -424,7 +425,7 @@ function ensureValidHomeSelection() {
   const selectedPrinterLocation = findPrinterLocation(selectedPrinter);
 
   if (selectedBrandObj) {
-    if (selectedPrinter && (!selectedPrinterLocation || selectedPrinterLocation.brandId !== selectedBrandObj.id)) {
+    if (selectedPrinter && !selectedPrinterLocation) {
       const fallbackPrinter = getFirstSelectablePrinter(selectedBrandObj.id);
       selectedPrinter = fallbackPrinter?.id || null;
     }
@@ -454,59 +455,6 @@ function getPrinterAvatar(printer) {
     return createLetterAvatarDataUri(getEntityPrimaryName(printer) || 'P', printer.id);
   }
   return toCatalogFileUrl(printer.image || getEntityOriginalImage(printer, 'printer')) || createLetterAvatarDataUri(getEntityPrimaryName(printer) || 'P', printer.id);
-}
-
-function getVersionTagMarkup(printer) {
-  const versions = Array.isArray(printer.supportedVersions) ? printer.supportedVersions : [];
-  if (versions.length === 0) {
-    return '<span class="home-version-badge home-version-badge-muted">未配置版本</span>';
-  }
-
-  return versions.map((versionType) => {
-    const theme = VERSION_THEMES[versionType];
-    const label = theme?.title || versionType;
-    const style = theme
-      ? `style="background:${escapeHtml(theme.bg)};color:${escapeHtml(theme.text)}"`
-      : '';
-    return `<span class="home-version-badge" ${style}>${escapeHtml(label)}</span>`;
-  }).join('');
-}
-
-function getMetaBadgeMarkup(item) {
-  const badges = [];
-  if (item.pinned) badges.push('<span class="home-meta-badge">置顶</span>');
-  if (item.favorite) badges.push('<span class="home-meta-badge">收藏</span>');
-  if (item.custom) badges.push('<span class="home-meta-badge home-meta-badge-soft">自定义</span>');
-  return badges.join('');
-}
-
-function updateHomeHeader(brandId = selectedBrand) {
-  const brand = getBrandById(brandId);
-  const title = document.getElementById('currentBrandTitle');
-  if (!title) return;
-
-  if (!brand) {
-    title.textContent = '未选择品牌';
-    return;
-  }
-
-  const printerCount = getPrinterListByBrand(brand.id).length;
-  title.textContent = `${brand.name} · ${printerCount} 个机型`;
-}
-
-function updateHomeHeader(brandId = selectedBrand) {
-  const brand = getBrandById(brandId);
-  const title = document.getElementById('currentBrandTitle');
-  if (!title) return;
-
-  if (!brand) {
-    title.textContent = '未选择品牌';
-    return;
-  }
-
-  const displayName = getEntityPrimaryName(brand) || brand.name || brand.shortName || brand.id;
-  const printerCount = getPrinterListByBrand(brand.id).length;
-  title.textContent = `${displayName} · ${printerCount} 个机型`;
 }
 
 function renderBrands() {
@@ -719,7 +667,20 @@ async function selectBrand(brandId) {
   const brand = getBrandById(brandId);
   if (!brand) return;
 
+  const selectedPrinterLocation = findPrinterLocation(selectedPrinter);
+  const isBrowseOnlyBrandSwitch = Boolean(
+    selectedPrinterLocation
+    && selectedPrinterLocation.brandId
+    && selectedPrinterLocation.brandId !== brand.id
+  );
+
   selectedBrand = brand.id;
+  if (isBrowseOnlyBrandSwitch) {
+    refreshHomeSelectionSurfaces(selectedBrand);
+    syncSidebarSelectionState();
+    return;
+  }
+
   const sidebarBrand = document.getElementById('sidebarBrand');
   if (sidebarBrand) {
     sidebarBrand.textContent = brand.shortName || brand.name;
@@ -810,46 +771,6 @@ function generateCustomIdentifier(prefix, seedText) {
   return `${prefix}_${base}_${Date.now().toString(36)}`.slice(0, 31);
 }
 
-function buildHomeContextItems(target) {
-  if (!target) return [];
-
-  if (target.type === 'brand') {
-    const brand = getBrandById(target.brandId);
-    if (!brand) return [];
-
-    return [
-      { action: 'toggle-favorite', label: brand.favorite ? '取消收藏' : '收藏品牌' },
-      { action: 'toggle-pin', label: brand.pinned ? '取消置顶' : '置顶品牌' },
-      { type: 'separator' },
-      { action: 'add-brand', label: '新增品牌' },
-      { action: 'add-printer', label: '新增机型' },
-      { type: 'separator' },
-      { action: 'rename', label: '重命名显示名' },
-      { action: 'avatar-default', label: '使用字母头像' },
-      { action: 'avatar-upload', label: '上传图片' },
-      { type: 'separator' },
-      { action: 'delete', label: brand.canDelete ? '删除品牌' : '默认品牌不可删除', disabled: !brand.canDelete }
-    ];
-  }
-
-  const printer = getPrinterObj(target.printerId);
-  if (!printer) return [];
-
-  return [
-    { action: 'toggle-favorite', label: printer.favorite ? '取消收藏' : '收藏机型' },
-    { action: 'toggle-pin', label: printer.pinned ? '取消置顶' : '置顶机型' },
-    { type: 'separator' },
-    { action: 'add-printer', label: '新增机型' },
-    { action: 'copy-printer', label: '复制机型' },
-    { type: 'separator' },
-    { action: 'rename', label: '重命名显示名' },
-    { action: 'avatar-default', label: '使用字母头像' },
-    { action: 'avatar-upload', label: '上传图片' },
-    { type: 'separator' },
-    { action: 'delete', label: printer.canDelete ? '删除机型' : '默认机型不可删除', disabled: !printer.canDelete }
-  ];
-}
-
 function renderHomeContextMenu(target) {
   const menu = document.getElementById(HOME_CONTEXT_MENU_ID);
   if (!menu) return;
@@ -886,77 +807,6 @@ function closeHomeCatalogContextMenu(options = {}) {
   hideFloatingSurface(menu, options);
 }
 
-async function promptRequiredDisplayName(options) {
-  while (true) {
-    const value = await MKPModal.prompt(options);
-    if (value === null) return null;
-    const normalized = String(value || '').trim();
-    if (normalized) {
-      return normalized;
-    }
-    await MKPModal.alert({
-      title: '名称不能为空',
-      msg: '请输入要显示的名称。',
-      type: 'warning'
-    });
-  }
-}
-
-async function persistCatalogWithFeedback() {
-  try {
-    await persistHomeCatalog();
-    return true;
-  } catch (error) {
-    Logger.error(`[HomeCatalog] 保存失败: ${error.message}`);
-    await MKPModal.alert({
-      title: '保存失败',
-      msg: escapeHtml(error.message || '首页目录保存失败。'),
-      type: 'error'
-    });
-    return false;
-  }
-}
-
-async function addBrandFlow() {
-  const displayName = await promptRequiredDisplayName({
-    title: '新增品牌',
-    msg: '请输入品牌显示名称。默认品牌不会被覆盖，新品牌会单独保存。',
-    placeholder: '例如：Bambu 自定义',
-    confirmText: '创建'
-  });
-  if (!displayName) return;
-
-  const id = generateCustomIdentifier('brand', displayName);
-  const newBrand = normalizeBrandEntity({
-    id,
-    name: displayName,
-    shortName: displayName,
-    subtitle: '自定义品牌',
-    image: '',
-    favorite: false,
-    pinned: true,
-    custom: true,
-    canDelete: true
-  });
-
-  brands.push(newBrand);
-  printersByBrand[id] = [];
-
-  if (await persistCatalogWithFeedback()) {
-    selectedBrand = id;
-    selectedPrinter = null;
-    renderBrands();
-    renderPrinters(id);
-    if (typeof window.renderDownloadVersions === 'function') {
-      window.renderDownloadVersions(null);
-    }
-    if (typeof window.refreshCalibrationAvailability === 'function') {
-      window.refreshCalibrationAvailability();
-    }
-    saveUserConfig();
-  }
-}
-
 function createPrinterTemplate(brandId) {
   const currentInBrand = getPrinterListByBrand(brandId).find((printer) => printer.id === selectedPrinter);
   const source = currentInBrand || getFirstSelectablePrinter(brandId);
@@ -989,156 +839,6 @@ function createPrinterTemplate(brandId) {
   }, brandId);
 }
 
-async function addPrinterFlow(brandId) {
-  const brand = getBrandById(brandId);
-  if (!brand) return;
-
-  const displayName = await promptRequiredDisplayName({
-    title: '新增机型',
-    msg: `将在“${escapeHtml(brand.name)}”下创建一个新机型，请先填写显示名称。`,
-    placeholder: '例如：A1 Pro',
-    confirmText: '创建'
-  });
-  if (!displayName) return;
-
-  const template = createPrinterTemplate(brandId);
-  const newPrinter = normalizePrinterEntity({
-    ...template,
-    id: generateCustomIdentifier(brandId, displayName),
-    brandId,
-    shortName: displayName,
-    name: composePrinterName(brandId, displayName),
-    image: '',
-    favorite: false,
-    pinned: true,
-    custom: true,
-    canDelete: true
-  }, brandId, template);
-
-  getPrinterListByBrand(brandId).push(newPrinter);
-
-  if (await persistCatalogWithFeedback()) {
-    selectedBrand = brandId;
-    selectPrinter(newPrinter.id, true);
-  }
-}
-
-async function copyPrinterFlow(printerId) {
-  const location = findPrinterLocation(printerId);
-  if (!location) return;
-
-  const displayName = await promptRequiredDisplayName({
-    title: '复制机型',
-    msg: `正在复制“${escapeHtml(location.printer.shortName || location.printer.name)}”，请先输入新的显示名称。`,
-    placeholder: '例如：A1 我的版本',
-    confirmText: '复制'
-  });
-  if (!displayName) return;
-
-  const cloned = normalizePrinterEntity({
-    ...cloneValue(location.printer),
-    id: generateCustomIdentifier(location.brandId, displayName),
-    brandId: location.brandId,
-    shortName: displayName,
-    name: composePrinterName(location.brandId, displayName),
-    favorite: false,
-    pinned: true,
-    custom: true,
-    canDelete: true
-  }, location.brandId, location.printer);
-
-  getPrinterListByBrand(location.brandId).push(cloned);
-
-  if (await persistCatalogWithFeedback()) {
-    selectedBrand = location.brandId;
-    selectPrinter(cloned.id, true);
-  }
-}
-
-async function deleteTargetFlow(target) {
-  if (!target) return;
-
-  if (target.type === 'brand') {
-    const brand = getBrandById(target.brandId);
-    if (!brand || !brand.canDelete) return;
-
-    const confirmed = await MKPModal.confirm({
-      title: '删除品牌',
-      msg: `确定删除“${escapeHtml(brand.name)}”以及该品牌下的全部自定义机型吗？此操作不会影响默认品牌。`,
-      type: 'warning',
-      confirmText: '删除'
-    });
-    if (!confirmed) return;
-
-    const brandIndex = brands.findIndex((item) => item.id === brand.id);
-    if (brandIndex >= 0) {
-      brands.splice(brandIndex, 1);
-    }
-    delete printersByBrand[brand.id];
-
-    if (await persistCatalogWithFeedback()) {
-      const fallbackBrand = getFirstAvailableBrand();
-      selectedBrand = fallbackBrand?.id || null;
-      selectedPrinter = selectedBrand ? getFirstSelectablePrinter(selectedBrand)?.id || null : null;
-      renderBrands();
-      renderPrinters(selectedBrand);
-      if (selectedPrinter) {
-        selectPrinter(selectedPrinter, true);
-      } else {
-        if (typeof window.renderDownloadVersions === 'function') {
-          window.renderDownloadVersions(null);
-        }
-        if (typeof window.refreshCalibrationAvailability === 'function') {
-          window.refreshCalibrationAvailability();
-        }
-        saveUserConfig();
-      }
-    }
-    return;
-  }
-
-  const location = findPrinterLocation(target.printerId);
-  if (!location || !location.printer.canDelete) return;
-
-  const confirmed = await MKPModal.confirm({
-    title: '删除机型',
-    msg: `确定删除“${escapeHtml(location.printer.shortName || location.printer.name)}”吗？默认机型不会被删除。`,
-    type: 'warning',
-    confirmText: '删除'
-  });
-  if (!confirmed) return;
-
-  const printerList = getPrinterListByBrand(location.brandId);
-  const printerIndex = printerList.findIndex((item) => item.id === location.printer.id);
-  if (printerIndex >= 0) {
-    printerList.splice(printerIndex, 1);
-  }
-
-  if (await persistCatalogWithFeedback()) {
-    if (selectedPrinter === location.printer.id) {
-      const fallbackPrinter = getFirstSelectablePrinter(location.brandId);
-      if (fallbackPrinter) {
-        selectPrinter(fallbackPrinter.id, true);
-      } else {
-        selectedPrinter = null;
-        selectedBrand = location.brandId;
-        renderBrands();
-        renderPrinters(location.brandId);
-        if (typeof window.renderDownloadVersions === 'function') {
-          window.renderDownloadVersions(null);
-        }
-        if (typeof window.refreshCalibrationAvailability === 'function') {
-          window.refreshCalibrationAvailability();
-        }
-        saveUserConfig();
-      }
-    } else {
-      refreshHomeSelectionSurfaces(selectedBrand);
-      saveUserConfig();
-    }
-  }
-}
-
 async function toggleFavoriteFlow(target) {
   if (!target) return;
 
@@ -1169,25 +869,6 @@ async function togglePinFlow(target) {
     const printer = getPrinterObj(target.printerId);
     if (!printer) return;
     printer.pinned = !printer.pinned;
-  }
-
-  if (await persistCatalogWithFeedback()) {
-    refreshHomeSelectionSurfaces(selectedBrand);
-    refreshSelectedBrandDownloadSurface(target);
-  }
-}
-
-async function useGeneratedAvatarFlow(target) {
-  if (!target) return;
-
-  if (target.type === 'brand') {
-    const brand = getBrandById(target.brandId);
-    if (!brand) return;
-    brand.image = '';
-  } else {
-    const printer = getPrinterObj(target.printerId);
-    if (!printer) return;
-    printer.image = '';
   }
 
   if (await persistCatalogWithFeedback()) {
@@ -1235,45 +916,6 @@ function refreshEmptyHomeDownstreamSurfaces() {
     window.refreshCalibrationAvailability();
   }
   saveUserConfig();
-}
-
-async function handleHomeContextAction(action) {
-  const target = homeContextTarget;
-  closeHomeCatalogContextMenu();
-
-  switch (action) {
-    case 'toggle-favorite':
-      await toggleFavoriteFlow(target);
-      break;
-    case 'toggle-pin':
-      await togglePinFlow(target);
-      break;
-    case 'add-brand':
-      await addBrandFlow();
-      break;
-    case 'add-printer':
-      await addPrinterFlow(target?.brandId || selectedBrand);
-      break;
-    case 'copy-printer':
-      if (target?.printerId) {
-        await copyPrinterFlow(target.printerId);
-      }
-      break;
-    case 'rename':
-      await renameTargetFlow(target);
-      break;
-    case 'avatar-default':
-      await useGeneratedAvatarFlow(target);
-      break;
-    case 'avatar-upload':
-      pickImageUploadForTarget(target);
-      break;
-    case 'delete':
-      await deleteTargetFlow(target);
-      break;
-    default:
-      break;
-  }
 }
 
 async function restoreOriginalImageFlow(target) {
@@ -1324,54 +966,6 @@ async function setLabelModeFlow(target, mode) {
   }
 }
 
-function buildHomeContextItems(target) {
-  if (!target) return [];
-
-  if (target.type === 'brand') {
-    const brand = getBrandById(target.brandId);
-    if (!brand) return [];
-
-    return [
-      { action: 'toggle-favorite', label: brand.favorite ? '取消收藏' : '收藏品牌' },
-      { action: 'toggle-pin', label: brand.pinned ? '取消置顶' : '置顶品牌' },
-      { type: 'separator' },
-      { action: 'display-short', label: brand.labelMode === 'short' ? '当前显示简称' : '显示简称', disabled: brand.labelMode === 'short' },
-      { action: 'display-full', label: brand.labelMode === 'full' ? '当前显示全称' : '显示全称', disabled: brand.labelMode === 'full' },
-      { type: 'separator' },
-      { action: 'add-brand', label: '新增品牌' },
-      { action: 'add-printer', label: '新增机型' },
-      { type: 'separator' },
-      { action: 'rename', label: '重命名显示名' },
-      { action: 'avatar-default', label: '使用字母头像' },
-      { action: 'restore-original-image', label: canRestoreOriginalImage(brand, 'brand') ? '恢复原本图片' : '没有原本图片', disabled: !canRestoreOriginalImage(brand, 'brand') || brand.avatarMode !== 'generated' },
-      { action: 'avatar-upload', label: '上传图片' },
-      { type: 'separator' },
-      { action: 'delete', label: brand.canDelete ? '删除品牌' : '默认品牌不可删除', disabled: !brand.canDelete }
-    ];
-  }
-
-  const printer = getPrinterObj(target.printerId);
-  if (!printer) return [];
-
-  return [
-    { action: 'toggle-favorite', label: printer.favorite ? '取消收藏' : '收藏机型' },
-    { action: 'toggle-pin', label: printer.pinned ? '取消置顶' : '置顶机型' },
-    { type: 'separator' },
-    { action: 'display-short', label: printer.labelMode === 'short' ? '当前显示简称' : '显示简称', disabled: printer.labelMode === 'short' },
-    { action: 'display-full', label: printer.labelMode === 'full' ? '当前显示全称' : '显示全称', disabled: printer.labelMode === 'full' },
-    { type: 'separator' },
-    { action: 'add-printer', label: '新增机型' },
-    { action: 'copy-printer', label: '复制机型' },
-    { type: 'separator' },
-    { action: 'rename', label: '重命名显示名' },
-    { action: 'avatar-default', label: '使用字母头像' },
-    { action: 'restore-original-image', label: canRestoreOriginalImage(printer, 'printer') ? '恢复原本图片' : '没有原本图片', disabled: !canRestoreOriginalImage(printer, 'printer') || printer.avatarMode !== 'generated' },
-    { action: 'avatar-upload', label: '上传图片' },
-    { type: 'separator' },
-    { action: 'delete', label: printer.canDelete ? '删除机型' : '默认机型不可删除', disabled: !printer.canDelete }
-  ];
-}
-
 async function useGeneratedAvatarFlow(target) {
   if (!target) return;
 
@@ -1388,65 +982,6 @@ async function useGeneratedAvatarFlow(target) {
   if (await persistCatalogWithFeedback()) {
     refreshHomeSelectionSurfaces(selectedBrand);
     refreshSelectedBrandDownloadSurface(target);
-  }
-}
-
-async function handleHomeImageInputChange(event) {
-  const file = event.target?.files?.[0];
-  const target = pendingImageTarget;
-  pendingImageTarget = null;
-  if (!file || !target) return;
-
-  try {
-    const dataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('图片读取失败'));
-      reader.readAsDataURL(file);
-    });
-
-    const itemId = target.type === 'brand' ? target.brandId : target.printerId;
-    const result = await window.mkpAPI.importHomeCatalogImage({
-      itemType: target.type,
-      itemId,
-      dataUrl
-    });
-
-    if (!result?.success || !result.path) {
-      throw new Error(result?.error || '图片导入失败');
-    }
-
-    if (target.type === 'brand') {
-      const brand = getBrandById(target.brandId);
-      if (!brand) return;
-      brand.image = result.path;
-      if (!brand.originalImage) {
-        brand.originalImage = getEntityOriginalImage(brand, 'brand');
-      }
-      brand.avatarMode = 'custom';
-    } else {
-      const printer = getPrinterObj(target.printerId);
-      if (!printer) return;
-      printer.image = result.path;
-      if (!printer.originalImage) {
-        printer.originalImage = getEntityOriginalImage(printer, 'printer');
-      }
-      printer.avatarMode = 'custom';
-    }
-
-    if (await persistCatalogWithFeedback()) {
-      refreshHomeSelectionSurfaces(selectedBrand);
-      refreshSelectedBrandDownloadSurface(target);
-    }
-  } catch (error) {
-    Logger.error(`[HomeCatalog] 图片导入失败: ${error.message}`);
-    await MKPModal.alert({
-      title: '图片导入失败',
-      msg: escapeHtml(error.message || '图片处理失败。'),
-      type: 'error'
-    });
-  } finally {
-    event.target.value = '';
   }
 }
 
@@ -1498,19 +1033,6 @@ async function handleHomeContextAction(action) {
   }
 }
 
-function updateHomeHeader(brandId = selectedBrand) {
-  const brand = getBrandById(brandId);
-  const title = document.getElementById('currentBrandTitle');
-  if (!title) return;
-
-  if (!brand) {
-    title.textContent = '未选择品牌';
-    return;
-  }
-
-  title.textContent = `${brand.name || brand.shortName} · ${getPrinterListByBrand(brand.id).length} 个机型`;
-}
-
 function bindContextMenu() {
   if (window.__homeCatalogContextMenuBound) return;
   window.__homeCatalogContextMenuBound = true;
@@ -1519,6 +1041,9 @@ function bindContextMenu() {
   const imageInput = document.getElementById(HOME_IMAGE_INPUT_ID);
   const compactBtn = document.getElementById('homeViewCompactBtn');
   const detailedBtn = document.getElementById('homeViewDetailedBtn');
+  const prevBtn = document.getElementById('homeGalleryPrevBtn');
+  const nextBtn = document.getElementById('homeGalleryNextBtn');
+  const viewport = document.getElementById('homeGalleryViewport');
   if (!menu) return;
 
   if (typeof window.bindFloatingSurfaceAutoDismiss === 'function') {
@@ -1556,6 +1081,32 @@ function bindContextMenu() {
   }
   if (detailedBtn) {
     detailedBtn.addEventListener('click', () => setHomeViewMode('detailed'));
+  }
+
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => {
+      stepHomeGallery(-1);
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+      stepHomeGallery(1);
+    });
+  }
+
+  if (viewport) {
+    viewport.addEventListener('wheel', (event) => {
+      const printerGrid = document.getElementById('printerGrid');
+      if (homeViewMode !== 'compact' || !printerGrid) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+
+      event.preventDefault();
+      printerGrid.scrollBy({
+        left: event.deltaY,
+        behavior: 'auto'
+      });
+    }, { passive: false });
   }
 
   applyHomeViewMode();
@@ -1869,6 +1420,8 @@ async function handleHomeImageInputChange(event) {
   if (!file || !target) return;
 
   try {
+    await window.MKPFileGuards?.assertImageFileSafe?.(file, '图片');
+
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ''));

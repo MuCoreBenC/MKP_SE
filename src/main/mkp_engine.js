@@ -1,5 +1,57 @@
 const fs = require('fs');
 
+const WIPE_TOWER_FOOTPRINT = Object.freeze({
+  minXOffset: -5,
+  maxXOffset: 28,
+  minYOffset: -5,
+  maxYOffset: 28
+});
+
+const TOWER_ANCHOR_CENTER_OFFSET = Object.freeze({
+  x: 15,
+  y: 15
+});
+
+const DEFAULT_TOWER_GEOMETRY = Object.freeze({
+  coreWidth: 20,
+  coreDepth: 20,
+  brimWidth: 0,
+  outerWallWidth: 0,
+  outerWallDepth: 0,
+  slantedOuterWallEnabled: false,
+  slantedOuterWallWidth: 0,
+  slantedOuterWallDepth: 0,
+  layerWidth: 20,
+  layerDepth: 20,
+  baseWidth: 20,
+  baseDepth: 20
+});
+
+const BAMBU_X1_P1_FRONT_DEAD_ZONES = Object.freeze([
+  Object.freeze({ id: 'mkp-safety', label: 'MKP safety restriction', kind: 'safety', minX: 6, maxX: 41, minY: 6, maxY: 52 }),
+  Object.freeze({ id: 'official-front-strip', label: 'Official front purge strip', kind: 'official', minX: 18, maxX: 240, minY: 6, maxY: 12 }),
+  Object.freeze({ id: 'official-front-hook', label: 'Official front L return', kind: 'official', minX: 231, maxX: 240, minY: 6, maxY: 18 })
+]);
+
+const TOWER_DEAD_ZONE_CLEARANCE = 1;
+
+const BAMBU_X1_P1_TOWER_PROFILE = Object.freeze({
+  id: 'bambu-x1-p1',
+  bounds: Object.freeze({ minX: 0, maxX: 256, minY: 0, maxY: 256 }),
+  manualSafeRange: Object.freeze({ minX: 6, maxX: 250, minY: 6, maxY: 250 }),
+  deadZones: Object.freeze([
+    Object.freeze({ id: 'mkp-safety', label: 'MKP safety restriction', kind: 'safety', minX: 6, maxX: 41, minY: 6, maxY: 52 }),
+    Object.freeze({ id: 'official-left-l', label: 'Official left L dead zone', kind: 'official', minX: 6, maxX: 18, minY: 6, maxY: 250 }),
+    Object.freeze({ id: 'official-bottom-l', label: 'Official bottom L dead zone', kind: 'official', minX: 6, maxX: 28, minY: 6, maxY: 28 })
+  ])
+});
+
+const TOWER_PLACEMENT_PROFILES = Object.freeze({
+  p1: BAMBU_X1_P1_TOWER_PROFILE,
+  p1s: BAMBU_X1_P1_TOWER_PROFILE,
+  x1: BAMBU_X1_P1_TOWER_PROFILE
+});
+
 const DEFAULT_WIPING_GCODE = `
 ;Tower_Layer_Gcode
 EXTRUDER_REFILL
@@ -297,8 +349,8 @@ function parseCliArguments(argv = []) {
     throw new Error('Missing required --Gcode argument');
   }
 
-  if (jsonPath && tomlPath) {
-    throw new Error('Use either --Json or --Toml, not both');
+  if (tomlPath) {
+    throw new Error('CLI no longer supports --Toml. Convert the TOML preset to JSON in Settings and use --Json.');
   }
 
   if (jsonPath) {
@@ -309,15 +361,7 @@ function parseCliArguments(argv = []) {
     };
   }
 
-  if (tomlPath) {
-    return {
-      configFormat: 'toml',
-      configPath: tomlPath,
-      gcodePath
-    };
-  }
-
-  throw new Error('Missing required --Json or --Toml argument');
+  throw new Error('Missing required --Json argument');
 }
 
 function parseConfigText(text, format) {
@@ -342,12 +386,118 @@ function inferConfigFormatFromPath(configPath = '') {
   return String(configPath).toLowerCase().endsWith('.toml') ? 'toml' : 'json';
 }
 
+function getNonNegativeNumber(source, keys, fallback = 0) {
+  return roundTo(Math.max(0, getNumber(source, keys, fallback)), 3);
+}
+
+function resolveTowerGeometryEnabled(source = {}, valueKeys = []) {
+  const toggleKeys = ['towerSlantedOuterWallEnabled', 'tower_slanted_outer_wall_enabled'];
+
+  for (const key of toggleKeys) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+    const value = source[key];
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') return true;
+      if (normalized === 'false') return false;
+    }
+    if (typeof value === 'number') {
+      return value > 0;
+    }
+  }
+
+  return valueKeys.some((key) => getNonNegativeNumber(source, [key], 0) > 0);
+}
+
+function normalizeTowerGeometry(source = {}) {
+  const coreWidth = Math.max(DEFAULT_TOWER_GEOMETRY.coreWidth, getNonNegativeNumber(source, ['towerWidth', 'tower_width'], DEFAULT_TOWER_GEOMETRY.coreWidth));
+  const coreDepth = Math.max(DEFAULT_TOWER_GEOMETRY.coreDepth, getNonNegativeNumber(source, ['towerDepth', 'tower_depth'], DEFAULT_TOWER_GEOMETRY.coreDepth));
+  const brimWidth = getNonNegativeNumber(source, ['towerBrimWidth', 'tower_brim_width'], DEFAULT_TOWER_GEOMETRY.brimWidth);
+  const outerWallWidth = getNonNegativeNumber(source, ['towerOuterWallWidth', 'tower_outer_wall_width'], DEFAULT_TOWER_GEOMETRY.outerWallWidth);
+  const outerWallDepth = getNonNegativeNumber(source, ['towerOuterWallDepth', 'tower_outer_wall_depth'], outerWallWidth);
+  const slantedOuterWallEnabled = resolveTowerGeometryEnabled(source, ['tower_slanted_outer_wall_width', 'tower_slanted_outer_wall_depth']);
+  const slantedOuterWallWidth = slantedOuterWallEnabled
+    ? getNonNegativeNumber(source, ['towerSlantedOuterWallWidth', 'tower_slanted_outer_wall_width'], DEFAULT_TOWER_GEOMETRY.slantedOuterWallWidth)
+    : 0;
+  const slantedOuterWallDepth = slantedOuterWallEnabled
+    ? getNonNegativeNumber(source, ['towerSlantedOuterWallDepth', 'tower_slanted_outer_wall_depth'], slantedOuterWallWidth)
+    : 0;
+  const layerWidth = coreWidth + ((outerWallWidth + slantedOuterWallWidth) * 2);
+  const layerDepth = coreDepth + ((outerWallDepth + slantedOuterWallDepth) * 2);
+  const baseWidth = layerWidth + (brimWidth * 2);
+  const baseDepth = layerDepth + (brimWidth * 2);
+
+  return {
+    coreWidth: roundTo(coreWidth, 3),
+    coreDepth: roundTo(coreDepth, 3),
+    brimWidth: roundTo(brimWidth, 3),
+    outerWallWidth: roundTo(outerWallWidth, 3),
+    outerWallDepth: roundTo(outerWallDepth, 3),
+    slantedOuterWallEnabled,
+    slantedOuterWallWidth: roundTo(slantedOuterWallWidth, 3),
+    slantedOuterWallDepth: roundTo(slantedOuterWallDepth, 3),
+    layerWidth: roundTo(layerWidth, 3),
+    layerDepth: roundTo(layerDepth, 3),
+    baseWidth: roundTo(baseWidth, 3),
+    baseDepth: roundTo(baseDepth, 3)
+  };
+}
+
+function buildWipingTowerSafeFootprint(towerGeometry = DEFAULT_TOWER_GEOMETRY) {
+  const width = Number.isFinite(Number(towerGeometry?.baseWidth)) ? Number(towerGeometry.baseWidth) : DEFAULT_TOWER_GEOMETRY.baseWidth;
+  const depth = Number.isFinite(Number(towerGeometry?.baseDepth)) ? Number(towerGeometry.baseDepth) : DEFAULT_TOWER_GEOMETRY.baseDepth;
+  const minXOffset = roundTo(TOWER_ANCHOR_CENTER_OFFSET.x - (width / 2), 3);
+  const maxXOffset = roundTo(TOWER_ANCHOR_CENTER_OFFSET.x + (width / 2), 3);
+  const minYOffset = roundTo(TOWER_ANCHOR_CENTER_OFFSET.y - (depth / 2), 3);
+  const maxYOffset = roundTo(TOWER_ANCHOR_CENTER_OFFSET.y + (depth / 2), 3);
+
+  return {
+    minXOffset: Math.min(WIPE_TOWER_FOOTPRINT.minXOffset, minXOffset),
+    maxXOffset: Math.max(WIPE_TOWER_FOOTPRINT.maxXOffset, maxXOffset),
+    minYOffset: Math.min(WIPE_TOWER_FOOTPRINT.minYOffset, minYOffset),
+    maxYOffset: Math.max(WIPE_TOWER_FOOTPRINT.maxYOffset, maxYOffset)
+  };
+}
+
+function scaleTowerTemplateCoordinate(value, targetSpan) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return numeric;
+  return roundTo(20 + (((numeric - 20) / 10) * (targetSpan / 2)), 3);
+}
+
+function transformTowerTemplateLine(line, targetWidth, targetDepth) {
+  let nextLine = String(line);
+
+  if (/\bX-?\d/.test(nextLine)) {
+    nextLine = nextLine.replace(/X(-?\d+(?:\.\d+)?)/, (_, rawX) => `X${formatCompactNumber(scaleTowerTemplateCoordinate(rawX, targetWidth))}`);
+  }
+
+  if (/\bY-?\d/.test(nextLine)) {
+    nextLine = nextLine.replace(/Y(-?\d+(?:\.\d+)?)/, (_, rawY) => `Y${formatCompactNumber(scaleTowerTemplateCoordinate(rawY, targetDepth))}`);
+  }
+
+  return nextLine;
+}
+
 function normalizeConfig(source = {}) {
   const toolhead = source.toolhead || {};
   const wiping = source.wiping || {};
   const machine = source.machine || {};
   const templates = source.templates || {};
   const postProcessing = source.postProcessing || {};
+  const printerId = String(source.printer || machine.printerId || '').trim().toLowerCase();
+  const towerPlacementProfile = resolveTowerPlacementProfile(printerId);
+  const machineBounds = normalizeMachineBounds(machine.bounds || null, towerPlacementProfile);
+  const existingTowerPosition = machine.wipingTowerPosition || null;
+  const towerGeometry = normalizeTowerGeometry(wiping);
+  const rawWiperX = existingTowerPosition && typeof existingTowerPosition.rawWiperX === 'number'
+    ? existingTowerPosition.rawWiperX
+    : getNumber(wiping, ['wiperX', 'wiper_x'], 0);
+  const rawWiperY = existingTowerPosition && typeof existingTowerPosition.rawWiperY === 'number'
+    ? existingTowerPosition.rawWiperY
+    : getNumber(wiping, ['wiperY', 'wiper_y'], 0);
+  const wipingTowerPosition = resolveSafeWipingTowerPosition(rawWiperX, rawWiperY, machineBounds, towerPlacementProfile, towerGeometry);
 
   return {
     toolhead: {
@@ -363,14 +513,15 @@ function normalizeConfig(source = {}) {
     wiping: {
       haveWipingComponents: resolveWipingTowerEnabled(wiping),
       switchTowerType: getNumber(wiping, ['switchTowerType', 'switch_tower_type'], 1),
-      wiperX: getNumber(wiping, ['wiperX', 'wiper_x'], 0),
-      wiperY: getNumber(wiping, ['wiperY', 'wiper_y'], 0),
+      wiperX: wipingTowerPosition.wiperX,
+      wiperY: wipingTowerPosition.wiperY,
       wipeTowerPrintSpeed: getNumber(wiping, ['wipeTowerPrintSpeed', 'wipetower_speed'], 0),
       nozzleCoolingFlag: getBoolean(wiping, ['nozzleCoolingFlag', 'nozzle_cooling_flag'], false),
       ironApplyFlag: getBoolean(wiping, ['ironApplyFlag', 'iron_apply_flag'], false),
       userDryTime: getNumber(wiping, ['userDryTime', 'user_dry_time'], 0),
       forceThickBridgeFlag: getBoolean(wiping, ['forceThickBridgeFlag', 'force_thick_bridge_flag'], false),
-      supportExtrusionMultiplier: getNumber(wiping, ['supportExtrusionMultiplier', 'support_extrusion_multiplier'], 1)
+      supportExtrusionMultiplier: getNumber(wiping, ['supportExtrusionMultiplier', 'support_extrusion_multiplier'], 1),
+      towerGeometry
     },
     templates: {
       wipingGcode: resolveTemplateLines(templates.wipingGcode, DEFAULT_WIPING_GCODE, '; MKP wiping tower template'),
@@ -381,23 +532,306 @@ function normalizeConfig(source = {}) {
       )
     },
     machine: {
+      printerId,
       nozzleDiameter: getNumber(machine, ['nozzleDiameter', 'nozzle_diameter'], 0.4),
-      bounds: machine.bounds || null
+      bounds: machineBounds,
+      towerPlacementProfileId: towerPlacementProfile?.id || null,
+      wipingTowerPosition
     },
     postProcessing: {
       ironExtrudeRatio: getNumber(postProcessing, ['ironExtrudeRatio', 'iron_extrude_ratio'], 1),
       towerExtrudeRatio: getNumber(postProcessing, ['towerExtrudeRatio', 'tower_extrude_ratio'], 1),
-      ironingPathOffsetMm: getNumber(postProcessing, ['ironingPathOffsetMm', 'ironing_path_offset_mm'], 0)
+      ironingPathOffsetMm: getNumber(postProcessing, ['ironingPathOffsetMm', 'ironing_path_offset_mm'], 0),
+      futureLollipopMode: getBoolean(
+        postProcessing,
+        ['futureLollipopMode', 'future_lollipop_mode', 'enableExperimentalLollipopMode'],
+        false
+      ),
+      legacyWallBufferRecovery: getBoolean(
+        postProcessing,
+        ['legacyWallBufferRecovery', 'legacy_wall_buffer_recovery'],
+        false
+      )
     }
+  };
+}
+
+function resolveTowerPlacementProfile(printerId = '') {
+  return TOWER_PLACEMENT_PROFILES[String(printerId || '').trim().toLowerCase()] || null;
+}
+
+function normalizeMachineBounds(bounds, printerProfile = null) {
+  if (
+    bounds
+    && typeof bounds === 'object'
+    && typeof bounds.minX === 'number'
+    && typeof bounds.maxX === 'number'
+    && typeof bounds.minY === 'number'
+    && typeof bounds.maxY === 'number'
+    && bounds.maxX > bounds.minX
+    && bounds.maxY > bounds.minY
+  ) {
+    return {
+      minX: bounds.minX,
+      maxX: bounds.maxX,
+      minY: bounds.minY,
+      maxY: bounds.maxY
+    };
+  }
+
+  if (printerProfile?.bounds) {
+    return { ...printerProfile.bounds };
+  }
+
+  return null;
+}
+
+function intersectTowerPlacementRanges(baseRange, limitRange) {
+  if (!limitRange) {
+    return {
+      minX: baseRange.minX,
+      maxX: baseRange.maxX,
+      minY: baseRange.minY,
+      maxY: baseRange.maxY
+    };
+  }
+
+  const minX = Math.max(baseRange.minX, typeof limitRange.minX === 'number' ? limitRange.minX : baseRange.minX);
+  const maxX = Math.min(baseRange.maxX, typeof limitRange.maxX === 'number' ? limitRange.maxX : baseRange.maxX);
+  const minY = Math.max(baseRange.minY, typeof limitRange.minY === 'number' ? limitRange.minY : baseRange.minY);
+  const maxY = Math.min(baseRange.maxY, typeof limitRange.maxY === 'number' ? limitRange.maxY : baseRange.maxY);
+
+  return {
+    minX: roundTo(minX, 3),
+    maxX: roundTo(Math.max(minX, maxX), 3),
+    minY: roundTo(minY, 3),
+    maxY: roundTo(Math.max(minY, maxY), 3)
+  };
+}
+
+function buildTowerPlacementSafeRange(bounds, manualSafeRange = null, towerGeometry = DEFAULT_TOWER_GEOMETRY) {
+  if (!bounds) return null;
+  const safeFootprint = buildWipingTowerSafeFootprint(towerGeometry);
+
+  return intersectTowerPlacementRanges({
+    minX: roundTo((bounds.minX ?? 0) - safeFootprint.minXOffset, 3),
+    maxX: roundTo((bounds.maxX ?? 0) - safeFootprint.maxXOffset, 3),
+    minY: roundTo((bounds.minY ?? 0) - safeFootprint.minYOffset, 3),
+    maxY: roundTo((bounds.maxY ?? 0) - safeFootprint.maxYOffset, 3)
+  }, manualSafeRange);
+}
+
+function normalizeTowerPlacementZone(zone) {
+  if (!zone || typeof zone !== 'object') return null;
+  if (![zone.minX, zone.maxX, zone.minY, zone.maxY].every((value) => typeof value === 'number')) {
+    return null;
+  }
+
+  return {
+    id: String(zone.id || ''),
+    label: String(zone.label || zone.id || 'blocked-zone'),
+    kind: String(zone.kind || 'safety'),
+    minX: roundTo(Math.min(zone.minX, zone.maxX), 3),
+    maxX: roundTo(Math.max(zone.minX, zone.maxX), 3),
+    minY: roundTo(Math.min(zone.minY, zone.maxY), 3),
+    maxY: roundTo(Math.max(zone.minY, zone.maxY), 3)
+  };
+}
+
+function clipTowerPlacementZoneToRange(zone, safeRange) {
+  if (!zone || !safeRange) return null;
+
+  const minX = Math.max(zone.minX, safeRange.minX);
+  const maxX = Math.min(zone.maxX, safeRange.maxX);
+  const minY = Math.max(zone.minY, safeRange.minY);
+  const maxY = Math.min(zone.maxY, safeRange.maxY);
+
+  if (maxX < minX || maxY < minY) {
+    return null;
+  }
+
+  return {
+    ...zone,
+    minX: roundTo(minX, 3),
+    maxX: roundTo(maxX, 3),
+    minY: roundTo(minY, 3),
+    maxY: roundTo(maxY, 3)
+  };
+}
+
+function resolveTowerPlacementDeadZoneSource(printerProfile) {
+  if (printerProfile?.id === BAMBU_X1_P1_TOWER_PROFILE.id) {
+    return BAMBU_X1_P1_FRONT_DEAD_ZONES;
+  }
+  return printerProfile?.deadZones || [];
+}
+
+function resolveTowerPlacementDeadZones(printerProfile, safeRange) {
+  return resolveTowerPlacementDeadZoneSource(printerProfile)
+    .map((zone) => normalizeTowerPlacementZone(zone))
+    .map((zone) => clipTowerPlacementZoneToRange(zone, safeRange))
+    .filter(Boolean);
+}
+
+function snapTowerAnchorCoordinate(value, safeRange, axis) {
+  const safeMin = axis === 'x' ? safeRange?.minX : safeRange?.minY;
+  const safeMax = axis === 'x' ? safeRange?.maxX : safeRange?.maxY;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return typeof safeMin === 'number' ? roundTo(safeMin, 3) : 0;
+  }
+  const snapped = Math.round(numeric);
+  if (typeof safeMin !== 'number' || typeof safeMax !== 'number') {
+    return roundTo(snapped, 3);
+  }
+  return roundTo(Math.max(safeMin, Math.min(safeMax, snapped)), 3);
+}
+
+function clampTowerValueToRange(value, safeRange, axis) {
+  const numeric = Number(value);
+  const safeMin = axis === 'x' ? safeRange.minX : safeRange.minY;
+  const safeMax = axis === 'x' ? safeRange.maxX : safeRange.maxY;
+  if (!Number.isFinite(numeric)) return safeMin;
+  return roundTo(Math.max(safeMin, Math.min(safeMax, numeric)), 3);
+}
+
+function isTowerPlacementInsideZone(x, y, zone) {
+  if (!zone) return false;
+  return x >= zone.minX && x <= zone.maxX && y >= zone.minY && y <= zone.maxY;
+}
+
+function projectTowerPlacementOutOfZone(x, y, zone, safeRange) {
+  const candidates = [];
+  const nextLeft = roundTo(zone.minX - TOWER_DEAD_ZONE_CLEARANCE, 3);
+  const nextRight = roundTo(zone.maxX + TOWER_DEAD_ZONE_CLEARANCE, 3);
+  const nextBottom = roundTo(zone.minY - TOWER_DEAD_ZONE_CLEARANCE, 3);
+  const nextTop = roundTo(zone.maxY + TOWER_DEAD_ZONE_CLEARANCE, 3);
+
+  if (nextLeft >= safeRange.minX) {
+    candidates.push({ x: nextLeft, y, distance: Math.abs(x - nextLeft) });
+  }
+
+  if (nextRight <= safeRange.maxX) {
+    candidates.push({ x: nextRight, y, distance: Math.abs(x - nextRight) });
+  }
+
+  if (nextBottom >= safeRange.minY) {
+    candidates.push({ x, y: nextBottom, distance: Math.abs(y - nextBottom) });
+  }
+
+  if (nextTop <= safeRange.maxY) {
+    candidates.push({ x, y: nextTop, distance: Math.abs(y - nextTop) });
+  }
+
+  if (!candidates.length) {
+    return {
+      x: clampTowerValueToRange(x, safeRange, 'x'),
+      y: clampTowerValueToRange(y, safeRange, 'y')
+    };
+  }
+
+  candidates.sort((left, right) => left.distance - right.distance);
+  return {
+    x: roundTo(candidates[0].x, 3),
+    y: roundTo(candidates[0].y, 3)
+  };
+}
+
+function clampTowerAnchorToBounds(value, bounds, minKey, maxKey, minOffset, maxOffset) {
+  let nextValue = Number(value);
+  if (!Number.isFinite(nextValue)) {
+    nextValue = 0;
+  }
+
+  if (!bounds || typeof bounds !== 'object') {
+    return roundTo(nextValue, 3);
+  }
+
+  const minBound = typeof bounds[minKey] === 'number' ? bounds[minKey] - minOffset : null;
+  const maxBound = typeof bounds[maxKey] === 'number' ? bounds[maxKey] - maxOffset : null;
+
+  if (typeof minBound === 'number') {
+    nextValue = Math.max(minBound, nextValue);
+  }
+
+  if (typeof maxBound === 'number') {
+    nextValue = Math.min(maxBound, nextValue);
+  }
+
+  if (typeof minBound === 'number' && typeof maxBound === 'number' && minBound > maxBound) {
+    nextValue = minBound;
+  }
+
+  return roundTo(nextValue, 3);
+}
+
+function resolveSafeWipingTowerPosition(rawWiperX = 0, rawWiperY = 0, bounds = null, printerProfile = null, towerGeometry = DEFAULT_TOWER_GEOMETRY) {
+  const normalizedRawWiperX = roundTo(Number.isFinite(Number(rawWiperX)) ? Number(rawWiperX) : 0, 3);
+  const normalizedRawWiperY = roundTo(Number.isFinite(Number(rawWiperY)) ? Number(rawWiperY) : 0, 3);
+  const safeFootprint = buildWipingTowerSafeFootprint(towerGeometry);
+  const safeRange = buildTowerPlacementSafeRange(bounds, printerProfile?.manualSafeRange || null, towerGeometry);
+  const deadZones = resolveTowerPlacementDeadZones(printerProfile, safeRange);
+  const initialWiperX = safeRange
+    ? snapTowerAnchorCoordinate(clampTowerValueToRange(normalizedRawWiperX, safeRange, 'x'), safeRange, 'x')
+    : clampTowerAnchorToBounds(
+      rawWiperX,
+      bounds,
+      'minX',
+      'maxX',
+      safeFootprint.minXOffset,
+      safeFootprint.maxXOffset
+    );
+  const initialWiperY = safeRange
+    ? snapTowerAnchorCoordinate(clampTowerValueToRange(normalizedRawWiperY, safeRange, 'y'), safeRange, 'y')
+    : clampTowerAnchorToBounds(
+      rawWiperY,
+      bounds,
+      'minY',
+      'maxY',
+      safeFootprint.minYOffset,
+      safeFootprint.maxYOffset
+    );
+  const blockedZoneIds = deadZones
+    .filter((zone) => isTowerPlacementInsideZone(initialWiperX, initialWiperY, zone))
+    .map((zone) => zone.id);
+  const blockedZoneIdSet = new Set(blockedZoneIds);
+  let safeWiperX = initialWiperX;
+  let safeWiperY = initialWiperY;
+  let adjustedForDeadZone = false;
+
+  for (let index = 0; index < deadZones.length * 4; index += 1) {
+    const activeZone = deadZones.find((zone) => isTowerPlacementInsideZone(safeWiperX, safeWiperY, zone));
+    if (!activeZone) break;
+    blockedZoneIdSet.add(activeZone.id);
+
+    const projected = projectTowerPlacementOutOfZone(safeWiperX, safeWiperY, activeZone, safeRange);
+    if (!projected || (projected.x === safeWiperX && projected.y === safeWiperY)) {
+      break;
+    }
+
+    safeWiperX = snapTowerAnchorCoordinate(projected.x, safeRange, 'x');
+    safeWiperY = snapTowerAnchorCoordinate(projected.y, safeRange, 'y');
+    adjustedForDeadZone = true;
+  }
+
+  return {
+    rawWiperX: normalizedRawWiperX,
+    rawWiperY: normalizedRawWiperY,
+    wiperX: safeWiperX,
+    wiperY: safeWiperY,
+    adjusted: safeWiperX !== normalizedRawWiperX || safeWiperY !== normalizedRawWiperY,
+    adjustedForBounds: initialWiperX !== normalizedRawWiperX || initialWiperY !== normalizedRawWiperY,
+    adjustedForDeadZone,
+    blockedZoneIds: Array.from(blockedZoneIdSet),
+    safeRange,
+    printerProfileId: printerProfile?.id || null
   };
 }
 
 function resolveWipingTowerEnabled(wiping = {}) {
   const explicitKeys = [
     'useWipingTowers',
-    'use_wiping_towers',
-    'enableWipingTower',
-    'enable_wiping_tower'
+    'enableWipingTower'
   ];
 
   for (const key of explicitKeys) {
@@ -406,9 +840,11 @@ function resolveWipingTowerEnabled(wiping = {}) {
     }
   }
 
-  // Legacy presets stored the tower-mode toggle under `have_wiping_components`,
-  // but the current product default is slow-line tower mode unless a newer
-  // explicit override disables it.
+  // Public JSON / TOML presets still carry old snake_case fields such as
+  // `have_wiping_components` or `use_wiping_towers`, but the current shipping
+  // product is tower-only. Keep camelCase runtime flags as an internal escape
+  // hatch for tests and future experiments, while treating parsed preset input
+  // as slow-line wipe tower by default.
   return true;
 }
 
@@ -423,6 +859,19 @@ function resolveTemplateLines(templateLines, fallbackLines, legacyHeader) {
   }
 
   return normalized;
+}
+
+function resolveEffectiveSwitchTowerType(configOrOptions = {}) {
+  const requestedSwitchTowerType = Number(
+    configOrOptions?.wiping?.switchTowerType ?? configOrOptions?.switchTowerType ?? 1
+  ) || 1;
+  const futureLollipopMode = Boolean(
+    configOrOptions?.postProcessing?.futureLollipopMode ?? configOrOptions?.futureLollipopMode
+  );
+
+  // Keep the future fast-line / lollipop hook parked until we have real
+  // sample G-code and printer validation for that branch.
+  return futureLollipopMode ? requestedSwitchTowerType : 1;
 }
 
 function isLegacyPlaceholderTemplate(lines, legacyHeader) {
@@ -628,9 +1077,16 @@ function resetPseudoRandom() {
 
 function buildTowerPreparationTravelGcode(options = {}) {
   const currentLayerHeight = options.currentLayerHeight || 0;
-  const wiperX = options.wiperX || 0;
-  const wiperY = options.wiperY || 0;
   const machineBounds = options.machineBounds || null;
+  const towerPosition = resolveSafeWipingTowerPosition(
+    options.wiperX || 0,
+    options.wiperY || 0,
+    machineBounds,
+    resolveTowerPlacementProfile(options.printerId),
+    normalizeTowerGeometry(options.towerGeometry || {})
+  );
+  const wiperX = towerPosition.wiperX;
+  const wiperY = towerPosition.wiperY;
   const filamentType = String(options.filamentType || 'PLA').toUpperCase();
   const isPla = filamentType.includes('PLA');
   const lines = [`G1 Z${roundTo(currentLayerHeight, 3).toFixed(3)}`];
@@ -828,6 +1284,63 @@ function isTravelMoveWithoutExtrusion(line) {
   return /^G1\b/.test(command)
     && /(?:\bX|\bY)/.test(command)
     && !/\bE[+-]?(?:\d+(?:\.\d*)?|\.\d+)/.test(command);
+}
+
+function isRebuildPressureFeatureMarker(line) {
+  return String(line || '').startsWith('; FEATURE: Sparse infill')
+    || String(line || '').startsWith('; FEATURE: Internal solid infill');
+}
+
+function getXYExtrusionValue(line) {
+  const { command } = splitCommandAndComment(line);
+  if (!/^G1\b/.test(command) || !/(?:\bX|\bY)/.test(command)) {
+    return 0;
+  }
+
+  const extrusionMatch = command.match(/\bE([+-]?(?:\d+(?:\.\d*)?|\.\d+))/);
+  if (!extrusionMatch) {
+    return 0;
+  }
+
+  const extrusionValue = Number(extrusionMatch[1]);
+  return Number.isFinite(extrusionValue) ? extrusionValue : 0;
+}
+
+function extractRebuildPressureBuffer(lines, startIndex) {
+  const buffer = [];
+  let extrusionSum = 0;
+
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = String(lines[index] || '').trimEnd();
+    const extrusionValue = getXYExtrusionValue(line);
+
+    if (extrusionValue > 0) {
+      extrusionSum += extrusionValue;
+      buffer.push(line);
+    } else if (isTravelMoveWithoutExtrusion(line) || isInterfaceZOnlyLine(line)) {
+      buffer.push(line);
+    }
+
+    if (extrusionSum > 1) {
+      break;
+    }
+  }
+
+  return buffer;
+}
+
+function stripExtrusionFromMove(line) {
+  const { command, comment } = splitCommandAndComment(line);
+  const nextCommand = command
+    .replace(/\s*\bE[+-]?(?:\d+(?:\.\d*)?|\.\d+)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (comment) {
+    return nextCommand ? `${nextCommand} ${comment}` : comment;
+  }
+
+  return nextCommand;
 }
 
 function deleteWipe(interfaceLines = []) {
@@ -1174,13 +1687,22 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
       injectedSegments: 0
     },
     configSnapshot: {
+      printerId: config.machine.printerId || null,
       speedLimit: config.toolhead.speedLimit,
       offset: { ...config.toolhead.offset },
       nozzleDiameter: config.machine.nozzleDiameter,
       ironApplyFlag: config.wiping.ironApplyFlag,
       switchTowerType: config.wiping.switchTowerType,
+      effectiveSwitchTowerType: resolveEffectiveSwitchTowerType(config),
+      wiperX: config.wiping.wiperX,
+      wiperY: config.wiping.wiperY,
+      towerPositionAdjusted: Boolean(config.machine?.wipingTowerPosition?.adjusted),
+      towerBlockedZones: Array.isArray(config.machine?.wipingTowerPosition?.blockedZoneIds)
+        ? config.machine.wipingTowerPosition.blockedZoneIds.slice()
+        : [],
       supportExtrusionMultiplier: config.wiping.supportExtrusionMultiplier,
-      ironingPathOffsetMm: config.postProcessing.ironingPathOffsetMm
+      ironingPathOffsetMm: config.postProcessing.ironingPathOffsetMm,
+      futureLollipopMode: config.postProcessing.futureLollipopMode
     },
     runtime: getEngineRuntimeMetadata(runtimeOptions.runtimeInfo || {}),
     steps: [],
@@ -1191,13 +1713,29 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
     kind: 'config',
     title: '加载并归一化后处理配置',
     human: '已读取当前 preset，并整理成 JS 引擎统一使用的配置结构。',
-    technical: `normalizeConfig() -> configFormat=${runtimeOptions.configFormat || 'runtime'} speedLimit=${config.toolhead.speedLimit} haveWipingComponents=${config.wiping.haveWipingComponents} ironApplyFlag=${config.wiping.ironApplyFlag} switchTowerType=${config.wiping.switchTowerType} supportExtrusionMultiplier=${config.wiping.supportExtrusionMultiplier}`,
+    technical: `normalizeConfig() -> configFormat=${runtimeOptions.configFormat || 'runtime'} speedLimit=${config.toolhead.speedLimit} haveWipingComponents=${config.wiping.haveWipingComponents} ironApplyFlag=${config.wiping.ironApplyFlag} switchTowerType=${config.wiping.switchTowerType} effectiveSwitchTowerType=${resolveEffectiveSwitchTowerType(config)} futureLollipopMode=${config.postProcessing.futureLollipopMode} supportExtrusionMultiplier=${config.wiping.supportExtrusionMultiplier}`,
     data: {
       inputPath: report.inputPath,
       outputPath: report.outputPath,
       configPath: report.configPath
     }
   });
+
+  if (config.machine?.wipingTowerPosition?.adjusted) {
+    const towerPosition = config.machine.wipingTowerPosition;
+    const blockedZonesText = Array.isArray(towerPosition.blockedZoneIds) && towerPosition.blockedZoneIds.length
+      ? ` blockedZones=${towerPosition.blockedZoneIds.join(',')}`
+      : '';
+    pushReportStep(report, {
+      kind: 'config',
+      title: 'Clamp wipe tower position',
+      human: towerPosition.blockedZoneIds?.length
+        ? 'The raw wipe-tower anchor landed in a forbidden placement area, so the engine moved it to the nearest safe coordinate.'
+        : 'The raw wipe-tower anchor was outside the safe printable range, so the engine used the nearest safe coordinate.',
+      technical: `towerPlacement raw=(${formatCompactNumber(towerPosition.rawWiperX)},${formatCompactNumber(towerPosition.rawWiperY)}) effective=(${formatCompactNumber(towerPosition.wiperX)},${formatCompactNumber(towerPosition.wiperY)})${blockedZonesText}`,
+      data: towerPosition
+    });
+  }
 
   pushReportStep(report, {
     kind: 'config',
@@ -1390,6 +1928,7 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
     lastTravelMove: '',
     machineType: 'MKP',
     nozzleSwitchTemperature: null,
+    rebuildPressureBuffer: [],
     retractLength: 0,
     travelSpeed: 0
   };
@@ -1438,6 +1977,10 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
       runtimeState.currentFanSpeed = resolveParsedNumber(numStrip(line)[2], runtimeState.currentFanSpeed);
     } else if (line.startsWith('M106 S')) {
       runtimeState.currentFanSpeed = resolveParsedNumber(numStrip(line)[1], runtimeState.currentFanSpeed);
+    }
+
+    if (isRebuildPressureFeatureMarker(line)) {
+      runtimeState.rebuildPressureBuffer = extractRebuildPressureBuffer(lines, lineIndex);
     }
 
     if (isTravelMoveWithoutExtrusion(line) && !activeFeatureKind && runtimeState.captureLastTravelBeforeGlue) {
@@ -1530,7 +2073,9 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
         result.push(...buildTowerBaseLayerGcode({
           firstLayerHeight,
           firstLayerSpeed,
+          printerId: config.machine.printerId,
           retractLength: runtimeState.retractLength || 0,
+          towerGeometry: config.wiping.towerGeometry,
           towerBaseLayerGcode: config.templates.towerBaseLayerGcode,
           travelSpeed,
           wiperX: config.wiping.wiperX || 0,
@@ -1561,6 +2106,7 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
 
     if (layerBoundaryReached) {
       runtimeState.captureLastTravelBeforeGlue = true;
+      runtimeState.rebuildPressureBuffer = [];
     }
 
     if (activeFeatureKind && line) {
@@ -1637,8 +2183,8 @@ function buildInterfaceInjection(interfaceBuffer, currentZ, config, runtimeState
   const glueHeight = roundTo(lastLayerHeight + offset.z, 3).toFixed(3);
   const postGlueLiftHeight = roundTo(currentZ + offset.z + 3, 3).toFixed(3);
 
-  lines.push('; ===== MKP Support Electron Glueing Start =====');
-  lines.push('M106 S255 ; enable cooling during glueing');
+  lines.push(';Pre-glue preparation');
+  lines.push('M106 S255');
   appendNozzleCooldown(lines, config, runtimeState);
 
   if (travelSpeed > 0 && glueWaitingPointX > 0 && mkpRetract !== 0) {
@@ -1647,14 +2193,19 @@ function buildInterfaceInjection(interfaceBuffer, currentZ, config, runtimeState
     );
   }
 
-  lines.push(`G1 Z${risingHeight} ; lift to avoid collision`);
+  lines.push(';Rising Nozzle a little');
+  lines.push(`G1 Z${risingHeight}`);
+  lines.push(';Mounting Toolhead');
   pushExpandedMountGcode(lines, config.toolhead.customMountGcode, currentZ, offset.z);
+  lines.push(';Toolhead Mounted');
 
   if (lastLayerHeight > 0 || offset.z !== 0) {
     lines.push(`G1 Z${mountedHoverHeight}`);
   }
 
   if (travelSpeed > 0 && runtimeState.lastTravelMove) {
+    lines.push(';Glueing Started');
+    lines.push(';Inposition');
     lines.push(`G1 F${travelSpeed}`);
     lines.push(
       processGcodeOffset(
@@ -1747,8 +2298,6 @@ function buildInterfaceInjection(interfaceBuffer, currentZ, config, runtimeState
     lines.push(`G1 Z${currentZ.toFixed(3)} ; resume print height`);
   }
 
-  lines.push('; ===== MKP Support Electron Glueing End =====');
-
   return lines;
 }
 
@@ -1825,6 +2374,27 @@ function appendPostGlueRecovery(target, currentZ, config, runtimeState, delayedT
       target.push(`G4 P${Math.round(userDryTime * 1000)}`);
     }
 
+    if (Array.isArray(runtimeState.rebuildPressureBuffer) && runtimeState.rebuildPressureBuffer.length > 0) {
+      const firstRecoveryMove = stripExtrusionFromMove(runtimeState.rebuildPressureBuffer[0]);
+      const lastLayerHeight = Number.isFinite(runtimeState.lastLayerHeight)
+        ? runtimeState.lastLayerHeight
+        : Math.max(currentZ - (runtimeState.currentLayerThickness || 0), 0);
+
+      target.push(';Print sparse/solid infill first');
+      if (runtimeState.travelSpeed > 0) {
+        target.push(`G1 F${Math.round(runtimeState.travelSpeed * 60)}`);
+      }
+      if (firstRecoveryMove) {
+        target.push(firstRecoveryMove);
+      }
+      target.push(`G1 Z${roundTo(lastLayerHeight + 0.1, 3).toFixed(3)}`);
+      target.push('G1 F600');
+
+      for (let index = 1; index < runtimeState.rebuildPressureBuffer.length; index += 1) {
+        target.push(String(runtimeState.rebuildPressureBuffer[index]).trimEnd());
+      }
+    }
+
     return;
   }
 
@@ -1843,6 +2413,8 @@ function appendPostGlueRecovery(target, currentZ, config, runtimeState, delayedT
     currentLayerHeight: currentZ,
     filamentType: runtimeState.filamentType,
     machineBounds: config.machine.bounds,
+    printerId: config.machine.printerId,
+    towerGeometry: config.wiping.towerGeometry,
     wiperX: config.wiping.wiperX || 0,
     wiperY: config.wiping.wiperY || 0
   }));
@@ -1879,8 +2451,16 @@ function buildTowerBaseLayerGcode(options = {}) {
   const firstLayerSpeed = options.firstLayerSpeed || 0;
   const retractLength = options.retractLength || 0;
   const travelSpeed = options.travelSpeed || 0;
-  const wiperX = options.wiperX || 0;
-  const wiperY = options.wiperY || 0;
+  const towerGeometry = normalizeTowerGeometry(options.towerGeometry || {});
+  const towerPosition = resolveSafeWipingTowerPosition(
+    options.wiperX || 0,
+    options.wiperY || 0,
+    options.machineBounds || null,
+    resolveTowerPlacementProfile(options.printerId),
+    towerGeometry
+  );
+  const wiperX = towerPosition.wiperX;
+  const wiperY = towerPosition.wiperY;
   const towerBaseLayerGcode = Array.isArray(options.towerBaseLayerGcode)
     ? options.towerBaseLayerGcode
     : DEFAULT_TOWER_BASE_LAYER_GCODE;
@@ -1918,9 +2498,10 @@ function buildTowerBaseLayerGcode(options = {}) {
     }
 
     if (line.includes('G1 ') && !line.includes('G1 E') && !line.includes('G1 F')) {
+      const templateLine = transformTowerTemplateLine(line, towerGeometry.baseWidth, towerGeometry.baseDepth);
       lines.push(
         processGcodeOffset(
-          line,
+          templateLine,
           wiperX - 5,
           wiperY - 5,
           0,
@@ -1944,21 +2525,29 @@ function buildWipingTowerLayerGcode(options = {}) {
   const localLayerThickness = options.localLayerThickness || 0;
   const nozzleDiameter = options.nozzleDiameter || 0.4;
   const retractLength = options.retractLength || 0;
+  const towerGeometry = normalizeTowerGeometry(options.towerGeometry || {});
   const defaultSuggestedLayerHeight = localLayerThickness > 0
     ? Math.max(localLayerThickness, roundTo(0.2 * nozzleDiameter, 3))
     : roundTo(0.65 * nozzleDiameter, 3);
   const suggestedLayerHeight = Number.isFinite(options.suggestedLayerHeight)
     ? options.suggestedLayerHeight
     : defaultSuggestedLayerHeight;
-  const switchTowerType = options.switchTowerType || 1;
+  const switchTowerType = resolveEffectiveSwitchTowerType(options);
   const towerHeight = options.towerHeight || 0;
   const travelSpeed = options.travelSpeed || 0;
   const wipeTowerPrintSpeed = options.wipeTowerPrintSpeed || 0;
   const wipingGcode = Array.isArray(options.wipingGcode)
     ? options.wipingGcode
     : DEFAULT_WIPING_GCODE;
-  const wiperX = options.wiperX || 0;
-  const wiperY = options.wiperY || 0;
+  const towerPosition = resolveSafeWipingTowerPosition(
+    options.wiperX || 0,
+    options.wiperY || 0,
+    options.machineBounds || null,
+    resolveTowerPlacementProfile(options.printerId),
+    towerGeometry
+  );
+  const wiperX = towerPosition.wiperX;
+  const wiperY = towerPosition.wiperY;
   const towerExtrudeRatio = roundTo(suggestedLayerHeight / 0.2, 3);
   const lines = [];
 
@@ -2018,9 +2607,10 @@ function buildWipingTowerLayerGcode(options = {}) {
       continue;
     }
 
+    const templateLine = transformTowerTemplateLine(line, towerGeometry.layerWidth, towerGeometry.layerDepth);
     lines.push(
       processGcodeOffset(
-        line,
+        templateLine,
         wiperX - 5,
         wiperY - 5,
         0,
@@ -2034,9 +2624,10 @@ function buildWipingTowerLayerGcode(options = {}) {
   }
 
   lines.push(`G1 F${Math.round(travelSpeed * 60)}`);
+  const leavingTowerLine = transformTowerTemplateLine('G1 X33 Y33', towerGeometry.layerWidth, towerGeometry.layerDepth);
   lines.push(
     `${processGcodeOffset(
-      'G1 X33 Y33',
+      leavingTowerLine,
       wiperX - 5,
       wiperY - 5,
       towerHeight + 0.7,
@@ -2070,9 +2661,30 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
   let supportActive = false;
   let travelSpeed = config.toolhead.speedLimit || 0;
   let pendingTowerInjection = false;
+  let stripHeadWrapDetectBlock = false;
+  let stripNextTowerRecoveryG3 = false;
+  let emittedFollowUpTowerCount = 0;
 
   for (const rawLine of lines) {
     let line = rawLine.trimEnd();
+
+    if (line.startsWith('; SKIPTYPE: head_wrap_detect')) {
+      stripHeadWrapDetectBlock = true;
+      continue;
+    }
+
+    if (stripHeadWrapDetectBlock) {
+      if (line.includes('; SKIPPABLE_END')) {
+        stripHeadWrapDetectBlock = false;
+        result.push(line);
+      }
+      continue;
+    }
+
+    if (stripNextTowerRecoveryG3 && line.includes('G3 Z')) {
+      stripNextTowerRecoveryG3 = false;
+      continue;
+    }
 
     if (line.startsWith('; initial_layer_print_height =')) {
       firstLayerHeight = numStrip(line)[0] || firstLayerHeight;
@@ -2093,6 +2705,7 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
     if (line.startsWith('; LAYER_HEIGHT:')) {
       currentThickness = numStrip(line)[0] || currentThickness;
       suggestedRatio = calculateSuggestedRatio(currentThickness, nozzleDiameter);
+      result.push(`; Current Layer Thickness:${formatCompactNumber(currentThickness)}`);
     }
 
     if (line.startsWith('; FEATURE:')) {
@@ -2141,9 +2754,12 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
         localLayerThickness: currentThickness || 0,
         machineBounds: config.machine.bounds,
         nozzleDiameter: config.machine.nozzleDiameter || 0.4,
+        printerId: config.machine.printerId,
         retractLength,
         switchTowerType: config.wiping.switchTowerType || 1,
+        futureLollipopMode: config.postProcessing.futureLollipopMode,
         towerHeight: currentLayerHeight,
+        towerGeometry: config.wiping.towerGeometry,
         travelSpeed,
         wipeTowerPrintSpeed: config.wiping.wipeTowerPrintSpeed || 0,
         wipingGcode: config.templates.wipingGcode,
@@ -2151,12 +2767,137 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
         wiperY: config.wiping.wiperY || 0
       }));
       pendingTowerInjection = false;
+      emittedFollowUpTowerCount += 1;
+      stripNextTowerRecoveryG3 = emittedFollowUpTowerCount > 1;
     }
 
     result.push(line);
   }
 
+  const output = result.join('\n');
+
+  if (!config.postProcessing.legacyWallBufferRecovery) {
+    return output;
+  }
+
+  return applyLegacyWallBufferPass(output, config);
+}
+
+function applyLegacyWallBufferPass(gcodeContent, config = {}) {
+  const lines = String(gcodeContent || '').split(/\r?\n/);
+  const result = [];
+  const bufferedWallBlocks = [];
+  let layerHasSupportInterface = false;
+  let releaseBufferedWallsAfterLayerChange = false;
+  let travelSpeedMmPerSec = Number(config.toolhead?.speedLimit) || 0;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trimEnd();
+
+    if (line.startsWith('; travel_speed =')) {
+      travelSpeedMmPerSec = numStrip(line)[0] || travelSpeedMmPerSec;
+    }
+
+    if (line.includes('; FEATURE: Support interface')) {
+      layerHasSupportInterface = true;
+    }
+
+    if (layerHasSupportInterface && isWallRecoveryStart(lines, index)) {
+      const wallBlockEnd = findWallRecoveryBlockEnd(lines, index);
+      const bufferedLines = lines.slice(index, wallBlockEnd);
+      const nextFeatureKind = findNextFeatureKind(lines, wallBlockEnd);
+
+      if (bufferedLines.length > 0) {
+        result.push(';Walls Ahead!');
+        if (nextFeatureKind && !isWallLikeFeature(nextFeatureKind)) {
+          result.push(';Different Extrusion!');
+        }
+        bufferedWallBlocks.push(bufferedLines);
+        index = wallBlockEnd - 1;
+        continue;
+      }
+    }
+
+    result.push(line);
+
+    if (line.startsWith('; CHANGE_LAYER')) {
+      layerHasSupportInterface = false;
+      if (bufferedWallBlocks.length > 0) {
+        releaseBufferedWallsAfterLayerChange = true;
+      }
+    }
+
+    if (
+      releaseBufferedWallsAfterLayerChange
+      && line === 'G1 E-.04 F1800'
+      && bufferedWallBlocks.length > 0
+    ) {
+      result.push(';Walls Released');
+      result.push(`G1 F${formatWallMoveFeedrate(travelSpeedMmPerSec)};Wall Move Command`);
+      while (bufferedWallBlocks.length > 0) {
+        result.push(...bufferedWallBlocks.shift());
+      }
+      releaseBufferedWallsAfterLayerChange = false;
+    }
+  }
+
   return result.join('\n');
+}
+
+function isWallRecoveryStart(lines, index) {
+  const line = String(lines[index] || '').trimEnd();
+  if (!isTravelMoveWithoutExtrusion(line)) {
+    return false;
+  }
+
+  const nextFeatureKind = findNextFeatureKind(lines, index);
+  return isWallLikeFeature(nextFeatureKind);
+}
+
+function findWallRecoveryBlockEnd(lines, startIndex) {
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = String(lines[index] || '').trimEnd();
+
+    if (line.startsWith('; CHANGE_LAYER') || line.startsWith(';LAYER_CHANGE')) {
+      return index;
+    }
+
+    if (index > startIndex && isTravelMoveWithoutExtrusion(line)) {
+      const nextFeatureKind = findNextFeatureKind(lines, index);
+      if (nextFeatureKind && !isWallLikeFeature(nextFeatureKind)) {
+        return index;
+      }
+    }
+  }
+
+  return lines.length;
+}
+
+function findNextFeatureKind(lines, startIndex) {
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = String(lines[index] || '').trimEnd();
+    if (line.startsWith('; FEATURE:')) {
+      return line;
+    }
+
+    if (line.startsWith('; CHANGE_LAYER') || line.startsWith(';LAYER_CHANGE')) {
+      break;
+    }
+  }
+
+  return '';
+}
+
+function isWallLikeFeature(line) {
+  const featureLine = String(line || '').trimEnd();
+  return featureLine.startsWith('; FEATURE: Inner wall')
+    || featureLine.startsWith('; FEATURE: Outer wall')
+    || featureLine.startsWith('; FEATURE: Overhang wall');
+}
+
+function formatWallMoveFeedrate(travelSpeedMmPerSec) {
+  const feedrate = Math.max(0, Number(travelSpeedMmPerSec) || 0) * 60;
+  return feedrate.toFixed(1);
 }
 
 function scaleExtrusion(line, ratio, options = {}) {
@@ -2336,6 +3077,7 @@ module.exports = {
   numStrip,
   parseCliArguments,
   parseConfigText,
+  parseToml,
   processGcode,
   processGcodeDetailed,
   processGcodeContent,

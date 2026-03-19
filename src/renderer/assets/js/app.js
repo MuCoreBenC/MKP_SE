@@ -29,6 +29,18 @@ let APP_REAL_VERSION = '0.0.0';
 const ACTIVE_PRESET_UPDATED_EVENT = 'mkp:active-preset-updated';
 const PRESET_MUTATION_SIGNAL_KEY = 'mkp_preset_mutation_signal';
 const RENDERER_WINDOW_SYNC_ID = `renderer_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const XY_SUMMARY_LAYOUT_KEY = 'mkp_xy_summary_layout_v1';
+const DEFAULT_XY_SUMMARY_LAYOUT = Object.freeze({ x: 30, y: 70 });
+
+const xySummaryLayoutState = {
+  initialized: false,
+  dragging: false,
+  pointerId: null,
+  dragStartPointer: null,
+  dragStartLayout: { ...DEFAULT_XY_SUMMARY_LAYOUT },
+  saved: { ...DEFAULT_XY_SUMMARY_LAYOUT },
+  draft: { ...DEFAULT_XY_SUMMARY_LAYOUT }
+};
 
 const VERSION_THEMES = {
   standard: { title: '标准版', bg: 'var(--theme-standard-bg)', text: 'var(--theme-standard-text)' },
@@ -356,6 +368,11 @@ function positionFloatingTooltip(anchor, tooltip) {
   const anchorRect = anchor.getBoundingClientRect();
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const tooltipAlign = String(
+    anchor.dataset.tooltipAnchorAlign
+      || anchor.dataset.tooltipAlign
+      || 'start'
+  ).toLowerCase();
 
   tooltip.style.left = '0px';
   tooltip.style.top = '0px';
@@ -367,7 +384,9 @@ function positionFloatingTooltip(anchor, tooltip) {
   const tooltipWidth = tooltipRect.width || 280;
   const tooltipHeight = tooltipRect.height || 120;
 
-  let left = anchorRect.left;
+  let left = tooltipAlign === 'center'
+    ? anchorRect.left + ((anchorRect.width - tooltipWidth) / 2)
+    : anchorRect.left;
   let top = anchorRect.bottom + gap;
   let placement = 'bottom';
 
@@ -498,8 +517,11 @@ function saveUserConfig() {
     ...(previousConfig.appliedReleases || {}),
     ...appliedReleases
   };
+  const selectedPrinterLocation = typeof findPrinterLocation === 'function'
+    ? findPrinterLocation(selectedPrinter)
+    : null;
   const resolvedPrinter = selectedPrinter ?? null;
-  const resolvedBrand = selectedBrand ?? null;
+  const resolvedBrand = selectedPrinterLocation?.brandId ?? selectedBrand ?? null;
   const resolvedVersion = resolvePersistedVersionForPrinter(
     resolvedPrinter,
     selectedVersion ?? null,
@@ -1007,11 +1029,59 @@ window.expandCollapse = (el) => CollapseManager.toggle(el, 'expand');
 window.collapseCollapse = (el) => CollapseManager.toggle(el, 'collapse');
 
 
+function createParamsSaveButtonStatusController(btn, text, themeClass) {
+    const label = btn?.querySelector('.params-save-label');
+    const originalText = label?.dataset.originalText || label?.textContent || '保存所有修改';
+
+    if (label && !label.dataset.originalText) {
+        label.dataset.originalText = originalText;
+    }
+
+    const applyState = () => {
+        btn.classList.remove('params-save-working', 'params-save-success');
+        if (themeClass === 'btn-expand-green') {
+            btn.classList.add('params-save-success');
+        } else {
+            btn.classList.add('params-save-working');
+        }
+        if (label) label.textContent = text;
+        btn.style.pointerEvents = 'none';
+    };
+
+    if (btn.dataset.isAnimating === 'true' && typeof btn._restoreFn === 'function') {
+        applyState();
+        return btn._restoreFn;
+    }
+
+    btn.dataset.isAnimating = 'true';
+    applyState();
+
+    const restoreFn = () => {
+        btn.classList.remove('params-save-working', 'params-save-success');
+        btn.style.pointerEvents = '';
+        if (label) label.textContent = label.dataset.originalText || originalText;
+
+        delete btn.dataset.isAnimating;
+        delete btn._restoreFn;
+        if (typeof window.__syncParamsSaveButtonState === 'function') {
+            window.__syncParamsSaveButtonState();
+        }
+    };
+
+    restoreFn.unlock = restoreFn;
+    btn._restoreFn = restoreFn;
+    return restoreFn;
+}
+
 // ==========================================
 // 🚀 Vercel 风格按钮状态转换器 (终极双向防抖 & 丝滑无缝版)
 // ==========================================
 function setButtonStatus(btn, targetWidth, text, iconSvg, themeClass) {
     if (!btn) return { unlock: () => {} };
+
+    if (btn.id === 'saveParamsBtn') {
+        return createParamsSaveButtonStatusController(btn, text, themeClass);
+    }
 
     // 💡 1. 如果已经在动画中，完美丝滑切换 (防抽搐连招)
     if (btn.dataset.isAnimating === 'true') {
@@ -1121,6 +1191,7 @@ function setButtonStatus(btn, targetWidth, text, iconSvg, themeClass) {
             // 解锁也需要遵循安全落地原则
             btn.style.setProperty('transition', 'none', 'important');
             
+            btn.innerHTML = origHtml;
             btn.style.pointerEvents = '';
             btn.className = origClasses; 
             btn.style.width = '';
@@ -1220,7 +1291,9 @@ async function fetchCloudPresets(printerId, versionType) {
       try {
         response = await fetch(url);
         if (response.ok) break; 
-      } catch (e) {}
+      } catch (e) {
+        Logger.warn(`[O401] Manifest candidate fetch failed: ${url}, err:${e?.message || e}`);
+      }
     }
     
     if (!response || !response.ok) throw new Error(response ? `HTTP_${response.status}` : 'NetworkError');
@@ -1290,7 +1363,9 @@ async function checkUpdateEngine(type, targetId = null, forceCheck = false) {
         try {
           cloudData = JSON.parse(cachedStr);
           usedCache = true;
-        } catch(e) {}
+        } catch (e) {
+          Logger.warn(`[O401] Cached manifest parse failed: ${e?.message || e}`);
+        }
       }
     }
   }
@@ -1469,7 +1544,11 @@ async function safeRefreshLocalList() {
 
 function renderVersionCards(containerId, printerData, currentSelectedVersion, onSelectCallback) {
   const container = document.getElementById(containerId);
-  if (!container || !printerData) return;
+  if (!container) return;
+  if (!printerData) {
+    container.innerHTML = '';
+    return;
+  }
   container.innerHTML = '';
 
   let availableVersions = ['standard'];
@@ -1520,6 +1599,20 @@ function renderVersionCards(containerId, printerData, currentSelectedVersion, on
 }
 
 function renderDownloadVersions(printerData) {
+  const container = document.getElementById('downloadVersionList');
+  if (!printerData) {
+    if (container) {
+      container.innerHTML = '';
+    }
+    clearOnlineListUI();
+    renderPresetList(null, null);
+    const dlBtn = document.getElementById('downloadBtn');
+    const dlHint = document.getElementById('downloadHintWrapper');
+    if (dlBtn) dlBtn.disabled = true;
+    if (dlHint) dlHint.style.opacity = '1';
+    return;
+  }
+
   renderVersionCards('downloadVersionList', printerData, selectedVersion, (vType) => {
     Logger.info(`[O203] Select version, v:${vType}`); 
     selectedVersion = vType; 
@@ -1584,7 +1677,9 @@ async function renderPresetList(printerData, versionType) {
               });
           }
       }
-  } catch(e) {}
+  } catch (e) {
+    Logger.warn(`[O301] Local preset manifest read failed: ${e?.message || e}`);
+  }
 
   const filePrefix = `${printerData.id}_${versionType}_`;
   const matchedFiles = localFileNames.filter(name => name.startsWith(filePrefix));
@@ -1659,7 +1754,9 @@ async function renderPresetList(printerData, versionType) {
               // 兜底降序
               return a.realVersion.localeCompare(b.realVersion, undefined, { numeric: true, sensitivity: 'base' }) * -1;
           });
-      } catch(e) {}
+      } catch (e) {
+          Logger.warn(`[O301] Custom preset order parse failed: ${e?.message || e}`);
+      }
   } else {
       // 排序：按真实版本号倒序
       localData.sort((a, b) => {
@@ -2115,8 +2212,10 @@ function initOnboardingSetting() {
   const showOnboardingCheckbox = document.getElementById('showOnboarding');
   if (showOnboardingCheckbox) {
     showOnboardingCheckbox.checked = GlobalState.getOnboarding();
+    syncSettingsToggleStatus('showOnboardingStatus', showOnboardingCheckbox.checked);
     document.documentElement.toggleAttribute('data-hide-onboarding', !showOnboardingCheckbox.checked);
     showOnboardingCheckbox.addEventListener('change', function() {
+      syncSettingsToggleStatus('showOnboardingStatus', this.checked);
       GlobalState.setOnboarding(this.checked);
       document.documentElement.toggleAttribute('data-hide-onboarding', !this.checked);
     });
@@ -2396,14 +2495,21 @@ async function fetchAndRenderZOffsetData() {
   }
 }
 
-function scrollToZCardWithPadding() {
+function scrollCalibrationCardIntoView(cardId, options = {}) {
+  const delay = Number.isFinite(options.delay) ? options.delay : 80;
+  const block = options.block || 'center';
+
   setTimeout(() => {
-    const targetCard = document.getElementById('zCalibrationCard');
-    if (targetCard) {
-      targetCard.style.scrollMarginTop = '100px';
-      targetCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, 100);
+    const targetCard = document.getElementById(cardId);
+    if (!targetCard) return;
+
+    targetCard.style.scrollMarginTop = block === 'start' ? '96px' : '72px';
+    targetCard.scrollIntoView({
+      behavior: 'smooth',
+      block,
+      inline: 'nearest'
+    });
+  }, delay);
 }
 
 async function openZGridDirectly() {
@@ -2419,7 +2525,7 @@ async function openZGridDirectly() {
   zGridSelector.classList.remove('hidden');
 
   generateZGrid();
-  scrollToZCardWithPadding();
+  scrollCalibrationCardIntoView('zCalibrationCard', { block: 'start' });
 }
 
 async function openZModel() {
@@ -2433,6 +2539,7 @@ async function openZModel() {
 
   zProgress.classList.remove('hidden');
   zPlaceholder.classList.add('hidden');
+  scrollCalibrationCardIntoView('zCalibrationCard', { block: 'start', delay: 20 });
 
   try {
     Logger.info(`[O304] Copy model`); 
@@ -2451,7 +2558,7 @@ async function openZModel() {
       zGridSelector.classList.remove('hidden');
       
       generateZGrid();
-      scrollToZCardWithPadding();
+      scrollCalibrationCardIntoView('zCalibrationCard', { block: 'start' });
     } else {
       Logger.error(`[E601] Slicer call err / [E306] Model copy err: ${result.error}`); 
       alert('打开模型失败: ' + result.error);
@@ -2656,6 +2763,174 @@ function updateXYSummary() {
   }
 }
 
+function sanitizeXYSummaryLayout(layout) {
+  const fallback = DEFAULT_XY_SUMMARY_LAYOUT;
+  const parsedX = Number(layout?.x);
+  const parsedY = Number(layout?.y);
+
+  return {
+    x: Number.isFinite(parsedX) ? Math.round(parsedX) : fallback.x,
+    y: Number.isFinite(parsedY) ? Math.round(parsedY) : fallback.y
+  };
+}
+
+function areXYSummaryLayoutsEqual(left, right) {
+  const a = sanitizeXYSummaryLayout(left);
+  const b = sanitizeXYSummaryLayout(right);
+  return a.x === b.x && a.y === b.y;
+}
+
+function formatSignedPixelOffset(value) {
+  const rounded = Math.round(Number(value) || 0);
+  return `${rounded >= 0 ? '+' : '-'}${Math.abs(rounded)} px`;
+}
+
+function readXYSummaryLayout() {
+  try {
+    const raw = localStorage.getItem(XY_SUMMARY_LAYOUT_KEY);
+    if (!raw) return { ...DEFAULT_XY_SUMMARY_LAYOUT };
+    return sanitizeXYSummaryLayout(JSON.parse(raw));
+  } catch (error) {
+    Logger.warn(`[XYLayout] Failed to parse saved XY summary layout: ${error.message}`);
+    return { ...DEFAULT_XY_SUMMARY_LAYOUT };
+  }
+}
+
+function getXYSummaryLayoutCard() {
+  return document.querySelector('[data-xy-summary-layout-card]');
+}
+
+function updateXYSummaryLayoutControls() {
+  const metaElement = document.getElementById('xySummaryLayoutMeta');
+  const saveButton = document.getElementById('xySummaryLayoutSaveBtn');
+  const dirty = !areXYSummaryLayoutsEqual(xySummaryLayoutState.draft, xySummaryLayoutState.saved);
+
+  if (metaElement) {
+    metaElement.textContent = `X ${formatSignedPixelOffset(xySummaryLayoutState.draft.x)} / Y ${formatSignedPixelOffset(xySummaryLayoutState.draft.y)}${dirty ? ' · 未保存' : ''}`;
+  }
+
+  if (saveButton) {
+    saveButton.disabled = !dirty;
+    saveButton.setAttribute('aria-disabled', String(!dirty));
+    saveButton.classList.toggle('is-dirty', dirty);
+  }
+}
+
+function applyXYSummaryLayout(layout, options = {}) {
+  const nextLayout = sanitizeXYSummaryLayout(layout);
+  const card = getXYSummaryLayoutCard();
+
+  if (card) {
+    card.style.setProperty('--xy-summary-offset-x', `${nextLayout.x}px`);
+    card.style.setProperty('--xy-summary-offset-y', `${nextLayout.y}px`);
+  }
+
+  xySummaryLayoutState.draft = nextLayout;
+  if (options.syncSaved === true) {
+    xySummaryLayoutState.saved = { ...nextLayout };
+  }
+
+  updateXYSummaryLayoutControls();
+}
+
+function bindXYSummaryLayoutEditor() {
+  const card = getXYSummaryLayoutCard();
+  const handle = document.querySelector('[data-xy-summary-drag-handle]');
+  if (!card || !handle) return;
+
+  if (!xySummaryLayoutState.initialized) {
+    const savedLayout = readXYSummaryLayout();
+    xySummaryLayoutState.saved = { ...savedLayout };
+    xySummaryLayoutState.draft = { ...savedLayout };
+    xySummaryLayoutState.initialized = true;
+  }
+
+  applyXYSummaryLayout(xySummaryLayoutState.draft);
+
+  if (handle.dataset.xySummaryLayoutBound === 'true') return;
+  handle.dataset.xySummaryLayoutBound = 'true';
+
+  const endDrag = (event) => {
+    if (!xySummaryLayoutState.dragging) return;
+    if (event?.pointerId != null && xySummaryLayoutState.pointerId != null && event.pointerId !== xySummaryLayoutState.pointerId) return;
+
+    const activePointerId = xySummaryLayoutState.pointerId;
+    xySummaryLayoutState.dragging = false;
+    xySummaryLayoutState.pointerId = null;
+    xySummaryLayoutState.dragStartPointer = null;
+    xySummaryLayoutState.dragStartLayout = null;
+    card.classList.remove('is-dragging');
+    document.body.classList.remove('xy-summary-dragging');
+
+    if (activePointerId != null && typeof handle.hasPointerCapture === 'function' && handle.hasPointerCapture(activePointerId)) {
+      try {
+        handle.releasePointerCapture(activePointerId);
+      } catch (error) {
+        Logger.warn(`[XYLayout] Failed to release pointer capture: ${error.message}`);
+      }
+    }
+
+    updateXYSummaryLayoutControls();
+  };
+
+  handle.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+
+    event.preventDefault();
+    xySummaryLayoutState.dragging = true;
+    xySummaryLayoutState.pointerId = event.pointerId;
+    xySummaryLayoutState.dragStartPointer = { x: event.clientX, y: event.clientY };
+    xySummaryLayoutState.dragStartLayout = { ...xySummaryLayoutState.draft };
+    card.classList.add('is-dragging');
+    document.body.classList.add('xy-summary-dragging');
+
+    if (typeof handle.setPointerCapture === 'function') {
+      try {
+        handle.setPointerCapture(event.pointerId);
+      } catch (error) {
+        Logger.warn(`[XYLayout] Failed to capture pointer: ${error.message}`);
+      }
+    }
+  });
+
+  document.addEventListener('pointermove', (event) => {
+    if (!xySummaryLayoutState.dragging) return;
+    if (xySummaryLayoutState.pointerId != null && event.pointerId !== xySummaryLayoutState.pointerId) return;
+    if (!xySummaryLayoutState.dragStartPointer || !xySummaryLayoutState.dragStartLayout) return;
+
+    const nextLayout = {
+      x: xySummaryLayoutState.dragStartLayout.x + (event.clientX - xySummaryLayoutState.dragStartPointer.x),
+      y: xySummaryLayoutState.dragStartLayout.y + (event.clientY - xySummaryLayoutState.dragStartPointer.y)
+    };
+
+    applyXYSummaryLayout(nextLayout);
+  });
+
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+  window.addEventListener('blur', endDrag);
+}
+
+async function saveXYSummaryLayout(btnElement) {
+  const nextLayout = sanitizeXYSummaryLayout(xySummaryLayoutState.draft);
+  if (areXYSummaryLayoutsEqual(nextLayout, xySummaryLayoutState.saved)) return;
+
+  try {
+    localStorage.setItem(XY_SUMMARY_LAYOUT_KEY, JSON.stringify(nextLayout));
+    xySummaryLayoutState.saved = { ...nextLayout };
+    applyXYSummaryLayout(nextLayout);
+    if (btnElement && typeof btnElement.blur === 'function') btnElement.blur();
+    Logger.info(`[O306] Save XY summary layout | 附加数据: ${JSON.stringify(nextLayout)}`);
+  } catch (error) {
+    Logger.error(`[E306] XY summary layout save err: ${error.message}`);
+    await MKPModal.alert({
+      title: '保存位置失败',
+      msg: '摘要卡位置无法写入本地设置，请稍后重试。',
+      type: 'error'
+    });
+  }
+}
+
 function buildXYAxisButton(axis, offset) {
   const AXIS_SLOT = 28;
   const AXIS_MAJOR = 74;
@@ -2717,6 +2992,7 @@ async function openXYGridDirectly() {
   placeholder.classList.add('hidden');
   selector.classList.remove('hidden');
   generateXYGrid();
+  scrollCalibrationCardIntoView('xyCalibrationCard', { block: 'center' });
 }
 
 async function openXYModel() {
@@ -2730,6 +3006,7 @@ async function openXYModel() {
 
   progress.classList.remove('hidden');
   placeholder.classList.add('hidden');
+  scrollCalibrationCardIntoView('xyCalibrationCard', { block: 'center', delay: 20 });
 
   try {
     Logger.info('[O305] Open XY calibration model');
@@ -2750,6 +3027,7 @@ async function openXYModel() {
     progress.classList.add('hidden');
     selector.classList.remove('hidden');
     generateXYGrid();
+    scrollCalibrationCardIntoView('xyCalibrationCard', { block: 'center' });
   } catch (error) {
     Logger.error(`[E602] XY model open err: ${error.message}`);
     progress.classList.add('hidden');
@@ -2844,6 +3122,7 @@ window.openXYGridDirectly = openXYGridDirectly;
 window.openXYModel = openXYModel;
 window.selectXYOffset = selectXYOffset;
 window.saveXYOffset = saveXYOffset;
+window.saveXYSummaryLayout = saveXYSummaryLayout;
 window.refreshCalibrationOffsets = refreshCalibrationOffsets;
 
 
@@ -2896,6 +3175,7 @@ function toggleMacDockAnimation(enable, options = {}) {
   if (shouldPersist) {
     Logger.info("Write variable: setting_dock_anim, v:" + enable);
   }
+  syncSettingsToggleStatus('settingMacAnimStatus', enable);
   const zGrid = document.getElementById('zGrid');
   const scaleContainer = document.getElementById('dockScaleContainer');
   const scaleSlider = document.getElementById('settingDockScaleRange');
@@ -2968,6 +3248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindFloatingSurfaceAutoDismiss();
   bindFloatingTooltipSystem();
   bindCrossWindowStorageSync();
+  bindXYSummaryLayoutEditor();
 
   Logger.info("Read variable: setting_dock_anim");
   const savedAnimState = localStorage.getItem('setting_dock_anim');
@@ -2976,9 +3257,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const realVersion = await window.mkpAPI.getAppVersion();
   APP_REAL_VERSION = realVersion; 
   document.getElementById('settingsCurrentVersion').innerText = `v${realVersion}`;
+  await initTomlPresetConversionSetting();
 
   const animCheckbox = document.getElementById('settingMacAnim');
-  if (animCheckbox) animCheckbox.checked = wantsAnim;
+  if (animCheckbox) {
+    animCheckbox.checked = wantsAnim;
+    syncSettingsToggleStatus('settingMacAnimStatus', wantsAnim);
+  }
   
   toggleMacDockAnimation(wantsAnim);
 
@@ -3014,7 +3299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (settingsContainer) {
     settingsContainer.addEventListener('scroll', () => {
       const sections = document.querySelectorAll('.settings-section');
-      const navItems = document.querySelectorAll('.settings-nav-item');
+      const navItems = document.querySelectorAll('#settingsSectionNav .params-nav-item');
       const containerRect = settingsContainer.getBoundingClientRect();
       let currentActiveIndex = 0;
 
@@ -3148,6 +3433,128 @@ async function copyToClipboard(text) {
       Logger.error(`[Clipboard] 双重复制引擎均失败: ${err.message} / ${fallbackErr.message}`);
       throw new Error("彻底无法访问系统剪贴板");
     }
+  }
+}
+
+function updateTomlConversionStatus(message, options = {}) {
+  const statusElement = document.getElementById('settingTomlConvertStatus');
+  if (!statusElement) return;
+
+  statusElement.textContent = message;
+  statusElement.classList.remove('text-red-500', 'dark:text-red-400', 'text-emerald-600', 'dark:text-emerald-400');
+
+  if (options.error) {
+    statusElement.classList.add('text-red-500', 'dark:text-red-400');
+    return;
+  }
+
+  if (options.success) {
+    statusElement.classList.add('text-emerald-600', 'dark:text-emerald-400');
+  }
+}
+
+function syncSettingsToggleStatus(statusId, checked) {
+  const status = document.getElementById(statusId);
+  if (!status) return;
+  status.textContent = checked ? '已开启' : '已关闭';
+}
+
+async function initTomlPresetConversionSetting() {
+  const pathElement = document.getElementById('settingTomlConvertOutputPath');
+  if (!pathElement || !window.mkpAPI?.getConvertedPresetsFolder) {
+    return;
+  }
+
+  try {
+    const result = await window.mkpAPI.getConvertedPresetsFolder();
+    if (result.success && result.path) {
+      pathElement.textContent = result.path;
+      updateTomlConversionStatus('转换后的 JSON 会固定输出到这个目录。');
+      return;
+    }
+
+    pathElement.textContent = '读取失败';
+    updateTomlConversionStatus(result.error || '无法获取转换目录。', { error: true });
+  } catch (error) {
+    pathElement.textContent = '读取失败';
+    updateTomlConversionStatus(`无法获取转换目录：${error.message}`, { error: true });
+  }
+}
+
+async function convertTomlPresetToJson(btnElement) {
+  if (!window.mkpAPI?.convertTomlPresetToJson) {
+    await MKPModal.alert({ title: '功能不可用', msg: '当前版本未接入 TOML 转 JSON。', type: 'error' });
+    return;
+  }
+
+  const SPIN_ICON = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+  const CHECK_ICON = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+  const reset = btnElement ? setButtonStatus(btnElement, '122px', '转换中...', SPIN_ICON, 'btn-expand-theme') : { unlock: () => {} };
+
+  try {
+    const result = await window.mkpAPI.convertTomlPresetToJson();
+
+    if (result?.canceled) {
+      if (btnElement) reset.unlock();
+      updateTomlConversionStatus('已取消选择 TOML 文件。');
+      return;
+    }
+
+    if (!result?.success) {
+      if (btnElement) reset.unlock();
+      updateTomlConversionStatus(result?.error || 'TOML 转 JSON 失败。', { error: true });
+      await MKPModal.alert({ title: '转换失败', msg: result?.error || 'TOML 转 JSON 失败。', type: 'error' });
+      return;
+    }
+
+    const outputPathElement = document.getElementById('settingTomlConvertOutputPath');
+    if (outputPathElement && result.outputDir) {
+      outputPathElement.textContent = result.outputDir;
+    }
+
+    const outputName = String(result.outputPath || '').split(/[\\/]/).pop() || 'preset.json';
+    updateTomlConversionStatus(`已完成转换：${outputName}`, { success: true });
+
+    if (btnElement) {
+      const resetSuccess = setButtonStatus(btnElement, '104px', '已转换', CHECK_ICON, 'btn-expand-green');
+      setTimeout(resetSuccess, 1200);
+    }
+  } catch (error) {
+    if (btnElement) reset.unlock();
+    updateTomlConversionStatus(`转换异常：${error.message}`, { error: true });
+    await MKPModal.alert({ title: '转换异常', msg: error.message, type: 'error' });
+  }
+}
+
+async function openTomlJsonConversionFolder(btnElement) {
+  if (!window.mkpAPI?.openConvertedPresetsFolder) {
+    await MKPModal.alert({ title: '功能不可用', msg: '当前版本未接入转换目录打开能力。', type: 'error' });
+    return;
+  }
+
+  const CHECK_ICON = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+
+  try {
+    const result = await window.mkpAPI.openConvertedPresetsFolder();
+    if (!result?.success) {
+      updateTomlConversionStatus(result?.error || '无法打开转换目录。', { error: true });
+      await MKPModal.alert({ title: '打开失败', msg: result?.error || '无法打开转换目录。', type: 'error' });
+      return;
+    }
+
+    const outputPathElement = document.getElementById('settingTomlConvertOutputPath');
+    if (outputPathElement && result.path) {
+      outputPathElement.textContent = result.path;
+    }
+    updateTomlConversionStatus('已打开转换目录。');
+
+    if (btnElement) {
+      const resetSuccess = setButtonStatus(btnElement, '96px', '已打开', CHECK_ICON, 'btn-expand-green');
+      setTimeout(resetSuccess, 1000);
+    }
+  } catch (error) {
+    updateTomlConversionStatus(`打开目录异常：${error.message}`, { error: true });
+    await MKPModal.alert({ title: '打开异常', msg: error.message, type: 'error' });
   }
 }
 

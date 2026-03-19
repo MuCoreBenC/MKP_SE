@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 describe('home.js modern runtime smoke', () => {
-  it('revalidates selected printer/version together before downstream rendering consumes home selection state', () => {
+  it('only falls back to a replacement printer when the saved printer id disappears from the catalog', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
     const block = source.slice(
       source.lastIndexOf('function ensureValidHomeSelection()'),
@@ -11,7 +11,8 @@ describe('home.js modern runtime smoke', () => {
     );
 
     expect(block).toMatch(/const selectedPrinterLocation = findPrinterLocation\(selectedPrinter\);/);
-    expect(block).toMatch(/if \(selectedPrinter && \(!selectedPrinterLocation \|\| selectedPrinterLocation\.brandId !== selectedBrandObj\.id\)\) \{/);
+    expect(block).toMatch(/if \(selectedBrandObj\) \{[\s\S]*if \(selectedPrinter && !selectedPrinterLocation\) \{/);
+    expect(block).not.toMatch(/selectedPrinterLocation\.brandId !== selectedBrandObj\.id/);
     expect(block).toMatch(/selectedPrinter = fallbackPrinter\?\.id \|\| null;/);
     expect(block).toMatch(/selectedBrand = fallbackBrand\?\.id \|\| null;/);
     expect(block).toMatch(/const currentPrinter = selectedPrinter \? getPrinterObj\(selectedPrinter\) : null;/);
@@ -19,15 +20,15 @@ describe('home.js modern runtime smoke', () => {
     expect(block).toMatch(/selectedVersion = null;/);
   });
 
-  it('preserves an explicit brand-only restore state instead of auto-picking the first printer on startup', () => {
+  it('preserves brand-only browse state instead of auto-picking a printer for the browsed brand', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
     const block = source.slice(
       source.lastIndexOf('function ensureValidHomeSelection()'),
       source.lastIndexOf('function getBrandAvatar(')
     );
 
-    expect(block).not.toMatch(/if \(!selectedPrinterLocation \|\| selectedPrinterLocation\.brandId !== selectedBrandObj\.id\) \{/);
-    expect(block).toMatch(/if \(selectedBrandObj\) \{[\s\S]*if \(selectedPrinter && \(!selectedPrinterLocation \|\| selectedPrinterLocation\.brandId !== selectedBrandObj\.id\)\) \{/);
+    expect(block).toMatch(/if \(selectedBrandObj\) \{[\s\S]*if \(selectedPrinter && !selectedPrinterLocation\) \{/);
+    expect(block).not.toMatch(/selectedPrinterLocation\.brandId !== selectedBrandObj\.id/);
   });
 
   it('keeps selectPrinter on the legacy-to-modern sync path before rendering download versions', () => {
@@ -106,6 +107,27 @@ describe('home.js modern runtime smoke', () => {
     expect(block).toMatch(/const sidebarBrand = document\.getElementById\('sidebarBrand'\);/);
     expect(block).toMatch(/if \(sidebarBrand\) \{[\s\S]*sidebarBrand\.textContent = brand\.shortName \|\| brand\.name;[\s\S]*\}/);
     expect(block).not.toMatch(/selectPrinter\(fallbackPrinter\.id, true\)/);
+  });
+
+  it('treats cross-brand clicks as browse-only and keeps the active printer-version pair intact until a printer card is chosen', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('async function selectBrand('),
+      source.lastIndexOf('function selectPrinter(')
+    );
+    const browseOnlyStart = block.indexOf('if (isBrowseOnlyBrandSwitch) {');
+    const browseOnlyReturn = block.indexOf('return;', browseOnlyStart);
+    const resetPrinterIndex = block.indexOf('selectedPrinter = null;', browseOnlyStart);
+    const resetVersionIndex = block.indexOf('selectedVersion = null;', browseOnlyStart);
+
+    expect(block).toMatch(/const selectedPrinterLocation = findPrinterLocation\(selectedPrinter\);/);
+    expect(block).toMatch(/const isBrowseOnlyBrandSwitch = Boolean\(/);
+    expect(block).toMatch(/selectedPrinterLocation[\s\S]*selectedPrinterLocation\.brandId !== brand\.id/);
+    expect(block).toMatch(/if \(isBrowseOnlyBrandSwitch\) \{[\s\S]*refreshHomeSelectionSurfaces\(selectedBrand\);[\s\S]*syncSidebarSelectionState\(\);[\s\S]*return;[\s\S]*\}/);
+    expect(browseOnlyStart).toBeGreaterThanOrEqual(0);
+    expect(browseOnlyReturn).toBeGreaterThan(browseOnlyStart);
+    expect(resetPrinterIndex === -1 || resetPrinterIndex > browseOnlyReturn).toBe(true);
+    expect(resetVersionIndex === -1 || resetVersionIndex > browseOnlyReturn).toBe(true);
   });
 
   it('does not auto-select a fallback printer when brand selection changes and no current printer belongs to that brand', () => {
@@ -254,7 +276,25 @@ describe('home.js modern runtime smoke', () => {
     expect(activeBlock).toMatch(/requestAnimationFrame\(\(\) => \{[\s\S]*scrollHomeGalleryToSelected\('auto'\);[\s\S]*\}\);/);
   });
 
-  it('still contains historical duplicate render/render-bind definitions before the final active block', () => {
+  it('keeps only one active definition for each catalog entry helper', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
+
+    expect((source.match(/function getVersionTagMarkup\(/g) || []).length).toBe(1);
+    expect((source.match(/function getMetaBadgeMarkup\(/g) || []).length).toBe(1);
+    expect((source.match(/function updateHomeHeader\(brandId = selectedBrand\)/g) || []).length).toBe(1);
+    expect((source.match(/function buildHomeContextItems\(/g) || []).length).toBe(1);
+    expect((source.match(/async function promptRequiredDisplayName\(/g) || []).length).toBe(1);
+    expect((source.match(/async function persistCatalogWithFeedback\(/g) || []).length).toBe(1);
+    expect((source.match(/async function addBrandFlow\(/g) || []).length).toBe(1);
+    expect((source.match(/async function addPrinterFlow\(/g) || []).length).toBe(1);
+    expect((source.match(/async function copyPrinterFlow\(/g) || []).length).toBe(1);
+    expect((source.match(/async function deleteTargetFlow\(/g) || []).length).toBe(1);
+    expect((source.match(/async function useGeneratedAvatarFlow\(/g) || []).length).toBe(1);
+    expect((source.match(/async function handleHomeContextAction\(/g) || []).length).toBe(1);
+    expect((source.match(/async function handleHomeImageInputChange\(/g) || []).length).toBe(1);
+  });
+
+  it('keeps single render and bind definitions after cleanup', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/home.js', 'utf8');
 
     expect((source.match(/function renderBrands\(/g) || []).length).toBe(1);
@@ -269,11 +309,20 @@ describe('home.js modern runtime smoke', () => {
 
     expect(block).toMatch(/const compactBtn = document\.getElementById\('homeViewCompactBtn'\);/);
     expect(block).toMatch(/const detailedBtn = document\.getElementById\('homeViewDetailedBtn'\);/);
-    expect(block).not.toMatch(/const prevBtn = document\.getElementById\('homeGalleryPrevBtn'\);/);
-    expect(block).not.toMatch(/const nextBtn = document\.getElementById\('homeGalleryNextBtn'\);/);
-    expect(block).not.toMatch(/const viewport = document\.getElementById\('homeGalleryViewport'\);/);
+    expect(block).toMatch(/const prevBtn = document\.getElementById\('homeGalleryPrevBtn'\);/);
+    expect(block).toMatch(/const nextBtn = document\.getElementById\('homeGalleryNextBtn'\);/);
+    expect(block).toMatch(/const viewport = document\.getElementById\('homeGalleryViewport'\);/);
     expect(block).toMatch(/compactBtn\.addEventListener\('click', \(\) => setHomeViewMode\('compact'\)\);/);
+    expect(block).toMatch(/prevBtn\.addEventListener\('click', \(\) => \{[\s\S]*stepHomeGallery\(-1\);[\s\S]*\}\);/);
+    expect(block).toMatch(/nextBtn\.addEventListener\('click', \(\) => \{[\s\S]*stepHomeGallery\(1\);[\s\S]*\}\);/);
+    expect(block).toMatch(/viewport\.addEventListener\('wheel', \(event\) => \{[\s\S]*printerGrid\.scrollBy\(\{[\s\S]*left: event\.deltaY,[\s\S]*\}\);[\s\S]*\}, \{ passive: false \}\);/);
     expect((source.match(/function bindContextMenu\(/g) || []).length).toBe(1);
+  });
+
+  it('does not rely on a separate home-layout override script for homepage behavior', () => {
+    const indexSource = readFileSync('D:/trae/MKP_SE/src/renderer/index.html', 'utf8');
+
+    expect(indexSource).not.toMatch(/assets\/js\/home-layout-override\.js/);
   });
 
   it('clears downstream home surfaces when deleting the selected printer leaves no fallback printer', () => {
@@ -547,6 +596,7 @@ describe('home.js modern runtime smoke', () => {
     const end = rest.indexOf('function updateHomeHeader(brandId = selectedBrand) {');
     const block = rest.slice(0, end);
 
+    expect(block).toMatch(/await window\.MKPFileGuards\?\.assertImageFileSafe\?\.\(file, '.*?'\);/);
     expect(block).toMatch(/if \(target\.type === 'brand'\) \{[\s\S]*brand\.avatarMode = 'custom';[\s\S]*\}/);
     expect(block).toMatch(/if \(await persistCatalogWithFeedback\(\)\) \{[\s\S]*refreshHomeSelectionSurfaces\(selectedBrand\);[\s\S]*refreshSelectedBrandDownloadSurface\(target\);[\s\S]*\}/);
   });

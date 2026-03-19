@@ -42,6 +42,10 @@ const {
   saveDefaultCatalogConfig,
   saveDefaultPreset
 } = require('./release-config-ops');
+const {
+  convertTomlPresetFileToJson,
+  ensureConvertedPresetsDir
+} = require('./preset_conversion');
 const http = require('http');
 const https = require('https');
 const isCliMode = process.argv.includes('--Gcode');
@@ -436,7 +440,9 @@ function inspectPatchArchive(tempFilePath) {
       if (manifestVersion) {
         break;
       }
-    } catch (error) {}
+    } catch (error) {
+      console.warn('[HotUpdate] Failed to parse manifest candidate inside patch archive:', manifestEntry.entryName, error.message);
+    }
   }
 
   return {
@@ -766,6 +772,54 @@ ipcMain.handle('open-release-path', async (event, target) => {
   }
 });
 
+ipcMain.handle('get-converted-presets-folder', async () => {
+  try {
+    const outputDir = ensureConvertedPresetsDir(app.getPath('userData'));
+    return { success: true, path: outputDir };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('open-converted-presets-folder', async () => {
+  try {
+    const outputDir = ensureConvertedPresetsDir(app.getPath('userData'));
+    const openError = await shell.openPath(outputDir);
+    if (openError) {
+      return { success: false, error: openError, path: outputDir };
+    }
+    return { success: true, path: outputDir };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('convert-toml-preset-to-json', async () => {
+  try {
+    const pickerResult = await dialog.showOpenDialog({
+      title: '选择要转换的 TOML 预设',
+      properties: ['openFile'],
+      filters: [
+        { name: 'TOML Preset', extensions: ['toml'] }
+      ]
+    });
+
+    if (pickerResult.canceled || !pickerResult.filePaths?.[0]) {
+      return { success: false, canceled: true };
+    }
+
+    const conversion = convertTomlPresetFileToJson(pickerResult.filePaths[0], app.getPath('userData'));
+    return {
+      success: true,
+      sourcePath: conversion.sourcePath,
+      outputPath: conversion.outputPath,
+      outputDir: conversion.outputDir
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('read-home-catalog', async () => {
   try {
     return { success: true, data: readHomeCatalog(app.getPath('userData')) };
@@ -825,7 +879,11 @@ ipcMain.handle('apply-hot-update', async (event, payload) => {
     console.log(`[热更新] 解压覆盖成功！目标目录: ${targetExtractPath}`);
     
     // 4. 打扫战场 (删除临时压缩包)
-    try { fs.unlinkSync(tempZipPath); } catch(e) {}
+    try {
+      fs.unlinkSync(tempZipPath);
+    } catch (error) {
+      console.warn('[HotUpdate] Failed to remove temporary patch archive after apply:', tempZipPath, error.message);
+    }
 
     return { success: true };
     
@@ -1250,7 +1308,9 @@ if (isPostprocessReportMode) {
           runtime: runtimeInfo
         }, error));
         launchDetachedPostprocessReportViewer(app, reportPath);
-      } catch (reportError) {}
+      } catch (reportError) {
+        console.warn('[CLI] Failed to launch detached postprocess report viewer:', reportPath, reportError.message);
+      }
       if (Notification.isSupported()) {
         new Notification({ title: 'MKP 处理失败', body: `❌ ${error.message}` }).show();
       }
@@ -1627,7 +1687,11 @@ ipcMain.handle('apply-hot-update', async (event, payload) => {
     console.error('[HotUpdate] apply failed:', error);
     return { success: false, error: error.message };
   } finally {
-    try { fs.unlinkSync(tempZipPath); } catch (error) {}
+    try {
+      fs.unlinkSync(tempZipPath);
+    } catch (error) {
+      console.warn('[HotUpdate] Failed to remove temporary patch archive during cleanup:', tempZipPath, error.message);
+    }
   }
 });
 
@@ -1851,7 +1915,11 @@ ipcMain.handle('open-calibration-model', async (event, modelType, forceOpenWith 
       if (!err) {
         files.forEach(file => {
           if (file !== finalFileName && (file.startsWith('ZOffset Calibration') || file.startsWith('Precise Calibration'))) {
-            try { fs.unlinkSync(path.join(targetDir, file)); } catch (e) { }
+            try {
+              fs.unlinkSync(path.join(targetDir, file));
+            } catch (error) {
+              console.warn('[CalibrationCleanup] Failed to remove legacy calibration file:', file, error.message);
+            }
           }
         });
       }

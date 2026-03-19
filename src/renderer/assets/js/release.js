@@ -175,9 +175,21 @@
     $('releaseShortDescInput').value = info.shortDesc || '';
     $('releaseForceUpdateInput').checked = !!info.forceUpdate;
     $('releaseCanRollbackInput').checked = info.canRollback !== false;
+    syncReleaseToggleStatuses();
     $('releaseNotesInput').value = info.releaseNotesMarkdown || '';
     renderReleasePreview();
     renderPathsInfo(info);
+  }
+
+  function syncReleaseToggleStatus(statusId, checked) {
+    const status = $(statusId);
+    if (!status) return;
+    status.textContent = checked ? '已开启' : '已关闭';
+  }
+
+  function syncReleaseToggleStatuses() {
+    syncReleaseToggleStatus('releaseForceUpdateStatus', !!$('releaseForceUpdateInput')?.checked);
+    syncReleaseToggleStatus('releaseCanRollbackStatus', !!$('releaseCanRollbackInput')?.checked);
   }
 
   function collectReleasePayload() {
@@ -589,6 +601,7 @@
 
   async function importConfigImage(file) {
     if (!file) return;
+    await window.MKPFileGuards?.assertImageFileSafe?.(file, '图片');
     const readerResult = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ''));
@@ -766,6 +779,9 @@
       renderReleasePreview();
       setPreviewMode('preview');
     });
+    ['releaseForceUpdateInput', 'releaseCanRollbackInput'].forEach((id) => {
+      $(id).addEventListener('change', () => syncReleaseToggleStatuses());
+    });
     $('btnToggleEditorSize').addEventListener('click', () => setEditorExpanded(!state.editorExpanded));
     $('releaseNotesInput').addEventListener('input', renderReleasePreview);
     $('btnSaveReleaseInfo').addEventListener('click', async () => { await saveReleaseInfo(); });
@@ -863,6 +879,7 @@
     setEditorExpanded(false);
     updateSelectedModeUI();
     bindEvents();
+    syncReleaseToggleStatuses();
     renderReleasePreview();
     await loadReleaseInfo();
     await loadReleaseConfig();

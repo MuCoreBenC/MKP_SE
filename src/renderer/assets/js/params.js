@@ -9,6 +9,8 @@ const PARAM_GROUP_META = {
   advanced: { title: '扩展参数', desc: '当前 JSON 中存在但未分类的高级字段。', icon: 'advanced' }
 };
 
+const PARAM_SECTION_ORDER = ['meta', 'toolhead', 'wiping', 'mount', 'unmount', 'advanced'];
+
 const PARAM_TEMPLATE_FIELD_ORDER = [
   'templates.wipingGcode',
   'templates.towerBaseLayerGcode'
@@ -36,6 +38,85 @@ const PARAM_VALUE_DEFAULTS = {
   'wiping.switch_tower_type': 1
 };
 
+const PARAM_HIDDEN_PUBLIC_FIELDS = new Set([
+  'wiping.have_wiping_components',
+  'wiping.switch_tower_type',
+  'wiping.use_wiping_towers',
+  'wiping.useWipingTowers',
+  'wiping.enable_wiping_tower',
+  'wiping.enableWipingTower'
+]);
+
+const TOWER_GEOMETRY_FIELD_KEYS = new Set([
+  'wiping.tower_width',
+  'wiping.tower_depth',
+  'wiping.tower_brim_width',
+  'wiping.tower_outer_wall_width',
+  'wiping.tower_outer_wall_depth',
+  'wiping.tower_slanted_outer_wall_enabled',
+  'wiping.tower_slanted_outer_wall_width',
+  'wiping.tower_slanted_outer_wall_depth'
+]);
+
+const TOWER_EDITOR_DEFAULTS = {
+  bedWidth: 256,
+  bedDepth: 256,
+  safeMinX: 5,
+  safeMinY: 5,
+  safeMaxXOffset: 28,
+  safeMaxYOffset: 28,
+  towerWidth: 28,
+  towerDepth: 28
+};
+
+const TOWER_EDITOR_FOOTPRINT = {
+  minXOffset: -5,
+  maxXOffset: 28,
+  minYOffset: -5,
+  maxYOffset: 28
+};
+
+const TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS = {
+  anchorCenterOffsetX: 15,
+  anchorCenterOffsetY: 15,
+  width: 20,
+  depth: 20
+};
+
+const TOWER_EDITOR_VISUAL_SCALE = 1;
+const TOWER_EDITOR_VISUAL_MIN_SIZE = 20;
+const TOWER_CANVAS_EDGE_INSET_PERCENT = 5;
+
+const BAMBU_X1_P1_FRONT_DEAD_ZONES = Object.freeze([
+  Object.freeze({ id: 'mkp-safety', label: 'MKP 安全限制', kind: 'safety', minX: 6, maxX: 41, minY: 6, maxY: 52 }),
+  Object.freeze({ id: 'official-front-strip', label: '官方前沿排料线', kind: 'official', minX: 18, maxX: 240, minY: 6, maxY: 12 }),
+  Object.freeze({ id: 'official-front-hook', label: '官方前沿 L 回折', kind: 'official', minX: 231, maxX: 240, minY: 6, maxY: 18 })
+]);
+
+const TOWER_DEAD_ZONE_CLEARANCE = 1;
+
+const BAMBU_X1_P1_TOWER_PROFILE = {
+  bounds: { minX: 0, maxX: 256, minY: 0, maxY: 256 },
+  manualSafeRange: { minX: 6, maxX: 250, minY: 6, maxY: 250 },
+  boardStyle: 'bambu-x1',
+  deadZones: [
+    { id: 'mkp-safety', label: 'MKP 安全限制', kind: 'safety', minX: 6, maxX: 41, minY: 6, maxY: 52 },
+    { id: 'official-left-l', label: '官方 L 形左侧禁区', kind: 'official', minX: 6, maxX: 18, minY: 6, maxY: 250 },
+    { id: 'official-bottom-l', label: '官方 L 形底边禁区', kind: 'official', minX: 6, maxX: 28, minY: 6, maxY: 28 }
+  ]
+};
+
+const TOWER_EDITOR_PRINTER_PROFILES = {
+  a1: { bounds: { minX: 0, maxX: 256, minY: 0, maxY: 256 } },
+  a1mini: { bounds: { minX: 0, maxX: 180, minY: 0, maxY: 180 } },
+  p1: BAMBU_X1_P1_TOWER_PROFILE,
+  p1s: BAMBU_X1_P1_TOWER_PROFILE,
+  x1: BAMBU_X1_P1_TOWER_PROFILE,
+  s1c: { bounds: { minX: 0, maxX: 256, minY: 0, maxY: 256 } }
+};
+
+let activeParamNumericConstraints = {};
+
 const PARAM_FIELD_META = {
   version: { label: '预设版本', desc: '当前预设的真实版本号，下载页“最新”也会依赖它。', group: 'meta' },
   printer: { label: '适用机型', desc: '当前预设绑定的机型标识。', group: 'meta' },
@@ -48,8 +129,8 @@ const PARAM_FIELD_META = {
   'toolhead.offset.z': { label: 'Z 轴高度差', desc: '笔尖高度差，直接影响涂胶高度和碰撞风险。', unit: 'mm', group: 'toolhead' },
   'toolhead.custom_mount_gcode': { label: '展开动作文本', desc: '控制工具头弹出、锁定或准备动作。', type: 'gcode', group: 'mount' },
   'toolhead.custom_unmount_gcode': { label: '收起动作文本', desc: '控制工具头收回、擦嘴和退出动作。', type: 'gcode', group: 'unmount' },
-  'wiping.have_wiping_components': { label: '使用擦嘴塔', desc: '开启后改为打印擦嘴塔；关闭时按擦嘴组件路径处理。字段名虽然叫 components，但原版逻辑实际控制的是擦嘴塔方案。', type: 'boolean', group: 'wiping' },
-  'wiping.switch_tower_type': {
+  ['wiping.have_wiping_components']: { label: '使用擦嘴塔', desc: '开启后改为打印擦嘴塔；关闭时按擦嘴组件路径处理。字段名虽然叫 components，但原版逻辑实际控制的是擦嘴塔方案。', type: 'boolean', group: 'wiping' },
+  ['wiping.switch_tower_type']: {
     label: '擦料塔模式',
     desc: '对应 Python 的 Switch_Tower_Type。默认使用擦料塔慢线；切到棒棒糖时改为快线恢复模式。',
     type: 'select',
@@ -67,6 +148,14 @@ const PARAM_FIELD_META = {
   'wiping.user_dry_time': { label: '额外干燥时间', desc: '在流程里增加等待干燥时间，单位为秒。', unit: '秒', group: 'wiping' },
   'wiping.force_thick_bridge_flag': { label: '强制厚桥', desc: '原版注释为 Force Thick Bridge，常用于桥接厚度相关兼容策略。', type: 'boolean', group: 'wiping' },
   'wiping.support_extrusion_multiplier': { label: '支撑挤出倍率', desc: '调整支撑相关挤出倍率，影响支撑密度和表面表现。', group: 'wiping' },
+  'wiping.tower_width': { label: '擦料塔宽度', desc: '控制擦料塔主体的 X 向宽度。默认保持旧版 Python 的 20mm。', unit: 'mm', group: 'wiping' },
+  'wiping.tower_depth': { label: '擦料塔深度', desc: '控制擦料塔主体的 Y 向深度。默认保持旧版 Python 的 20mm。', unit: 'mm', group: 'wiping' },
+  'wiping.tower_brim_width': { label: '首层 Brim 扩展', desc: '只扩大首层底座占地，用于增加附着。不会改变后续层主体宽度。', unit: 'mm', group: 'wiping' },
+  'wiping.tower_outer_wall_width': { label: '外墙扩展宽度', desc: '对所有层的擦料塔轮廓做 X 向额外扩展。', unit: 'mm', group: 'wiping' },
+  'wiping.tower_outer_wall_depth': { label: '外墙扩展深度', desc: '对所有层的擦料塔轮廓做 Y 向额外扩展。', unit: 'mm', group: 'wiping' },
+  'wiping.tower_slanted_outer_wall_enabled': { label: '启用斜肋外墙', desc: '开启后再展开下面的斜肋外墙参数，预览占地、坐标限制和 CLI 生成会一起生效。', type: 'boolean', group: 'wiping' },
+  'wiping.tower_slanted_outer_wall_width': { label: '斜肋外墙宽度', desc: '在外墙基础上继续增加 X 向的斜肋外扩。关闭开关时不会参与生成。', unit: 'mm', group: 'wiping' },
+  'wiping.tower_slanted_outer_wall_depth': { label: '斜肋外墙深度', desc: '在外墙基础上继续增加 Y 向的斜肋外扩。关闭开关时不会参与生成。', unit: 'mm', group: 'wiping' },
   'templates.wipingGcode': {
     label: '擦嘴塔路径模板',
     desc: '底层 JS engine 使用的 templates.wipingGcode。通常无需修改，只有想覆盖默认擦嘴塔路径时再展开编辑。',
@@ -104,6 +193,9 @@ let gcodeLineContextMenuState = { row: null, editor: null };
 let copiedGcodeLineText = '';
 const gcodeHistoryStore = new WeakMap();
 const PARAM_HISTORY_LIMIT = 4000;
+const PARAMS_SAVE_DEFAULT_LABEL = '保存所有修改';
+const PARAMS_SAVE_WORKING_LABEL = '保存中...';
+const PARAMS_SAVE_SUCCESS_LABEL = '已保存';
 const paramEditorSession = window.__paramEditorSession || {
   stores: new Map(),
   activePath: null,
@@ -161,28 +253,27 @@ function normalizeFlatState(flatState = {}) {
 }
 
 function resolveEffectiveWipingTowerValueFromFlat(flatData = {}) {
-  const explicitKeys = [
-    'wiping.use_wiping_towers',
-    'wiping.useWipingTowers',
-    'wiping.enable_wiping_tower',
-    'wiping.enableWipingTower'
-  ];
-
-  for (const key of explicitKeys) {
-    if (typeof flatData[key] === 'boolean') {
-      return flatData[key];
-    }
-  }
-
   return true;
 }
 
 function applyWipingTowerParamCompatibility(flatData = {}) {
   const nextFlat = { ...flatData };
-  const effectiveTowerValue = resolveEffectiveWipingTowerValueFromFlat(flatData);
+  const effectiveTowerValue = true;
 
   nextFlat['wiping.have_wiping_components'] = effectiveTowerValue;
   nextFlat['wiping.use_wiping_towers'] = effectiveTowerValue;
+  nextFlat['wiping.useWipingTowers'] = effectiveTowerValue;
+  nextFlat['wiping.enable_wiping_tower'] = effectiveTowerValue;
+  nextFlat['wiping.enableWipingTower'] = effectiveTowerValue;
+  nextFlat['wiping.switch_tower_type'] = 1;
+
+  const towerPlacement = resolveTowerPlacement(
+    nextFlat['wiping.wiper_x'] ?? 0,
+    nextFlat['wiping.wiper_y'] ?? 0,
+    nextFlat
+  );
+  nextFlat['wiping.wiper_x'] = towerPlacement.x;
+  nextFlat['wiping.wiper_y'] = towerPlacement.y;
 
   return normalizeFlatState(nextFlat);
 }
@@ -226,28 +317,97 @@ function getActiveParamStore() {
   return getParamStore(paramEditorSession.activePath);
 }
 
+function getParamsSaveButtonLabel(button = document.getElementById('saveParamsBtn')) {
+  return button?.querySelector('.params-save-label') || null;
+}
+
+function clearParamsSaveButtonFeedback(button = document.getElementById('saveParamsBtn'), options = {}) {
+  if (!button) return;
+
+  if (button._paramsSaveFeedbackTimer) {
+    window.clearTimeout(button._paramsSaveFeedbackTimer);
+    delete button._paramsSaveFeedbackTimer;
+  }
+
+  button.classList.remove('params-save-working', 'params-save-success');
+  if (!options.keepLabel) {
+    const label = getParamsSaveButtonLabel(button);
+    if (label) label.textContent = PARAMS_SAVE_DEFAULT_LABEL;
+  }
+}
+
+function setParamsSaveButtonWorking(button = document.getElementById('saveParamsBtn')) {
+  if (!button) return;
+
+  clearParamsSaveButtonFeedback(button, { keepLabel: true });
+  button.classList.add('params-save-working');
+  const label = getParamsSaveButtonLabel(button);
+  if (label) label.textContent = PARAMS_SAVE_WORKING_LABEL;
+}
+
+function flashParamsSaveButtonSuccess(button = document.getElementById('saveParamsBtn'), duration = 1600, onComplete = null) {
+  if (!button) return;
+
+  clearParamsSaveButtonFeedback(button, { keepLabel: true });
+  button.classList.add('params-save-success');
+  const label = getParamsSaveButtonLabel(button);
+  if (label) label.textContent = PARAMS_SAVE_SUCCESS_LABEL;
+
+  button._paramsSaveFeedbackTimer = window.setTimeout(() => {
+    delete button._paramsSaveFeedbackTimer;
+    button.classList.remove('params-save-success');
+    const nextLabel = getParamsSaveButtonLabel(button);
+    if (nextLabel) nextLabel.textContent = PARAMS_SAVE_DEFAULT_LABEL;
+    if (typeof onComplete === 'function') onComplete();
+    updateParamDirtyUI();
+  }, duration);
+}
+
 function updateParamDirtyUI(store = getActiveParamStore()) {
   const saveBtn = document.getElementById('saveParamsBtn');
   const page = document.getElementById('page-params');
   const currentEditingFile = document.getElementById('currentEditingFile');
 
+  const isDirty = !!store?.dirty;
+
   if (saveBtn) {
-    saveBtn.classList.toggle('params-save-dirty', !!store?.dirty);
+    const isBusy = saveBtn.dataset.isSaving === 'true' || saveBtn.dataset.isAnimating === 'true';
+    const canSave = isDirty && !isBusy;
+    saveBtn.classList.toggle('params-save-dirty', canSave);
+    saveBtn.classList.toggle('params-save-ripple', canSave);
+    saveBtn.classList.toggle('params-save-idle', !isDirty && !isBusy);
+    saveBtn.toggleAttribute('data-dirty', canSave);
+    saveBtn.disabled = !canSave;
+    saveBtn.setAttribute('aria-disabled', saveBtn.disabled ? 'true' : 'false');
   }
 
   if (page) {
-    page.toggleAttribute('data-has-unsaved', !!store?.dirty);
+    page.toggleAttribute('data-has-unsaved', isDirty);
   }
 
   if (currentEditingFile) {
     const baseName = currentEditingFile.dataset.baseName || currentEditingFile.textContent || '未选择';
     currentEditingFile.dataset.baseName = baseName;
-    currentEditingFile.textContent = store?.dirty ? `${baseName} *` : baseName;
+    currentEditingFile.textContent = isDirty ? `${baseName} *` : baseName;
   }
 }
 
-function collectParamFullStateFromDom() {
-  const flatUpdates = {};
+function getParamFullStateBaseline(store = getActiveParamStore()) {
+  if (store?.history?.[store.index]?.flat) {
+    return normalizeFlatState(store.history[store.index].flat);
+  }
+
+  if (store?.savedFullSerialized) {
+    try {
+      return normalizeFlatState(JSON.parse(store.savedFullSerialized));
+    } catch (error) {}
+  }
+
+  return {};
+}
+
+function collectParamFullStateFromDom(store = getActiveParamStore()) {
+  const flatUpdates = { ...getParamFullStateBaseline(store) };
   document.querySelectorAll('.dynamic-param-input[data-json-key]').forEach((input) => {
     const key = input.getAttribute('data-json-key');
     if (!key) return;
@@ -559,9 +719,14 @@ function applyParamSnapshotToDom(snapshot, options = {}) {
   try {
     document.querySelectorAll('.dynamic-param-input[data-json-key]').forEach((input) => {
       const key = input.getAttribute('data-json-key');
-      if (input.type === 'checkbox') return;
       const value = snapshot.flat[key];
       if (value === undefined) return;
+
+      if (input.type === 'checkbox') {
+        input.checked = Boolean(value);
+        return;
+      }
+
       input.value = getParamEditorTextValue(key, value);
     });
 
@@ -574,6 +739,14 @@ function applyParamSnapshotToDom(snapshot, options = {}) {
       }
 
       syncRawToStructured(shell, { resetHistory: false });
+    });
+
+    document.querySelectorAll('.param-row-toggle').forEach((row) => {
+      const checkbox = row.querySelector('.dynamic-param-input[type="checkbox"]');
+      const status = row.querySelector('.param-switch-status');
+      if (checkbox && status) {
+        status.textContent = checkbox.checked ? '已开启' : '已关闭';
+      }
     });
   } finally {
     paramEditorSession.applying = false;
@@ -664,7 +837,7 @@ function markActiveParamSnapshotSaved(snapshot = null) {
   if (!store) return;
   const targetSnapshot = snapshot || store.history[store.index];
   store.savedSerialized = serializeParamSnapshot(targetSnapshot);
-  store.savedFullSerialized = serializeParamFullState(collectParamFullStateFromDom());
+  store.savedFullSerialized = serializeParamFullState(collectParamFullStateFromDom(store));
   updateParamDirtyState(store);
 }
 
@@ -672,20 +845,94 @@ function pushParamSnapshotToHistory(snapshot, options = {}) {
   const store = getActiveParamStore();
   if (!store || !snapshot) return;
 
-  store.history = store.history.slice(0, store.index + 1);
-  store.history.push(createParamSnapshot(snapshot.flat, snapshot.modes, snapshot.focus));
-  store.index = store.history.length - 1;
-  if (store.history.length > PARAM_HISTORY_LIMIT) {
-    store.history = store.history.slice(store.history.length - PARAM_HISTORY_LIMIT);
+  const nextSnapshot = createParamSnapshot(snapshot.flat, snapshot.modes, snapshot.focus);
+
+  if (options.replaceHistory) {
+    store.history = [nextSnapshot];
+    store.index = 0;
+  } else {
+    store.history = store.history.slice(0, store.index + 1);
+    store.history.push(nextSnapshot);
     store.index = store.history.length - 1;
+    if (store.history.length > PARAM_HISTORY_LIMIT) {
+      store.history = store.history.slice(store.history.length - PARAM_HISTORY_LIMIT);
+      store.index = store.history.length - 1;
+    }
   }
+  store.lastFocus = cloneParamFocus(nextSnapshot.focus);
 
   if (options.markSaved) {
     store.savedSerialized = serializeParamSnapshot(store.history[store.index]);
     store.savedFullSerialized = serializeParamFullState(store.history[store.index].flat);
   }
 
+  if (options.skipDirtySync) {
+    store.dirty = false;
+    updateParamDirtyUI(store);
+    return;
+  }
+
   updateParamDirtyState(store);
+}
+
+function replaceActiveParamStoreWithPersistedState(presetPath, flatState, options = {}) {
+  const persistedFlatState = buildRenderableParamState(normalizeFlatState(flatState)).flat;
+  let store = getParamStore(presetPath);
+  const currentSnapshot = store?.history?.[store.index] || null;
+  const nextSnapshot = createParamSnapshot(
+    persistedFlatState,
+    options.modes || currentSnapshot?.modes || collectParamModesFromDom(),
+    options.focus === undefined ? currentSnapshot?.focus || null : options.focus
+  );
+
+  if (!store) {
+    store = ensureParamStore(presetPath, persistedFlatState);
+  }
+
+  store.path = presetPath;
+  store.history = [nextSnapshot];
+  store.index = 0;
+  store.savedSerialized = serializeParamSnapshot(nextSnapshot);
+  store.savedFullSerialized = serializeParamFullState(persistedFlatState);
+  store.dirty = false;
+  store.lastFocus = cloneParamFocus(nextSnapshot.focus);
+  paramEditorSession.activePath = presetPath;
+
+  if (options.applyDom) {
+    applyFullParamStateToDom(persistedFlatState);
+    updateParamDirtyUI(store);
+  }
+
+  updateParamDirtyState(store);
+  return { store, snapshot: nextSnapshot, flatState: persistedFlatState };
+}
+
+function collectParamStateDiffKeys(leftFlat = {}, rightFlat = {}, limit = 12) {
+  const keys = Array.from(new Set([
+    ...Object.keys(normalizeFlatState(leftFlat)),
+    ...Object.keys(normalizeFlatState(rightFlat))
+  ])).sort();
+  const diffs = [];
+  for (const key of keys) {
+    const left = normalizeParamValueByKey(key, leftFlat[key]);
+    const right = normalizeParamValueByKey(key, rightFlat[key]);
+    if (JSON.stringify(left) !== JSON.stringify(right)) {
+      diffs.push(key);
+      if (diffs.length >= limit) break;
+    }
+  }
+  return diffs;
+}
+
+function logParamDirtyMismatch(context, expectedFlat = {}, actualFlat = {}, extra = {}) {
+  const diffKeys = collectParamStateDiffKeys(expectedFlat, actualFlat);
+  if (!diffKeys.length) return;
+
+  Logger.warn(`[Params] Dirty mismatch after ${context}`, {
+    diffKeys,
+    diffCount: diffKeys.length,
+    ...extra
+  });
 }
 
 function escapeParamHtml(value) {
@@ -723,6 +970,10 @@ function isAdvancedTemplateField(key) {
   return PARAM_TEMPLATE_FIELD_ORDER.includes(key);
 }
 
+function isTowerGeometryField(key) {
+  return TOWER_GEOMETRY_FIELD_KEYS.has(key);
+}
+
 function inferInputType(key, value) {
   const meta = getParamFieldMeta(key);
   if (meta.type) return meta.type;
@@ -756,6 +1007,14 @@ function getGcodeLineHint(line) {
   return '指令';
 }
 
+const ACTIVE_PRESET_LOG_STATE = {
+  storageKey: null,
+  fileName: null,
+  path: null,
+  pathLoggedAt: 0
+};
+const ACTIVE_PRESET_CACHE_MAX_AGE_MS = 10000;
+
 async function getActivePresetPath() {
   const downloadContext = typeof window.__getDownloadContextView__ === 'function'
     ? window.__getDownloadContextView__()
@@ -768,15 +1027,24 @@ async function getActivePresetPath() {
     : null;
 
   if (modernPath) {
+    ACTIVE_PRESET_LOG_STATE.storageKey = null;
+    ACTIVE_PRESET_LOG_STATE.fileName = null;
+    ACTIVE_PRESET_LOG_STATE.path = modernPath;
     return modernPath;
   }
 
-  Logger.info(`Read variable: mkp_current_script_${currentKey}`);
-  const fileName = localStorage.getItem(`mkp_current_script_${currentKey}`);
+  const storageKey = `mkp_current_script_${currentKey}`;
+  const fileName = localStorage.getItem(storageKey);
+  if (ACTIVE_PRESET_LOG_STATE.storageKey !== storageKey || ACTIVE_PRESET_LOG_STATE.fileName !== fileName) {
+    Logger.info(`Read variable: ${storageKey}`);
+    ACTIVE_PRESET_LOG_STATE.storageKey = storageKey;
+    ACTIVE_PRESET_LOG_STATE.fileName = fileName;
+  }
   const legacyPath = fileName
     ? `${await window.mkpAPI.getUserDataPath()}\\${fileName}`
     : null;
 
+  ACTIVE_PRESET_LOG_STATE.path = legacyPath;
   return legacyPath;
 }
 
@@ -785,11 +1053,15 @@ async function loadActivePreset(forceRefresh = false) {
   if (!path) return null;
 
   const now = Date.now();
-  if (!forceRefresh && window.presetCache.path === path && (now - window.presetCache.timestamp < 2000)) {
+  if (!forceRefresh && window.presetCache.path === path && (now - window.presetCache.timestamp < ACTIVE_PRESET_CACHE_MAX_AGE_MS)) {
     return { path, data: window.presetCache.data };
   }
 
-  Logger.info(`[O301] Read preset, path:${path}`);
+  if (ACTIVE_PRESET_LOG_STATE.path !== path || now - ACTIVE_PRESET_LOG_STATE.pathLoggedAt > 4000 || forceRefresh) {
+    Logger.info(`[O301] Read preset, path:${path}`);
+    ACTIVE_PRESET_LOG_STATE.path = path;
+    ACTIVE_PRESET_LOG_STATE.pathLoggedAt = now;
+  }
   const result = await window.mkpAPI.readPreset(path);
   if (!result.success) {
     Logger.error(`[E301] Preset not found: ${path}`);
@@ -863,15 +1135,17 @@ function renderFieldLabel(meta, key, subText = '') {
   `;
 }
 
-function createBooleanField(key, value, meta) {
+function createBooleanField(key, value, meta, options = {}) {
+  const wrapperAttrs = options.wrapperAttrs ? ` ${options.wrapperAttrs}` : '';
+  const inputAttrs = options.inputAttrs ? ` ${options.inputAttrs}` : '';
   return `
-    <label class="param-row param-row-toggle">
+    <label class="param-row param-row-toggle"${wrapperAttrs}>
       ${renderFieldLabel(meta, key, '布尔开关')}
       <div class="param-row-control">
         <span class="param-switch-status">${value ? '已开启' : '已关闭'}</span>
-        <span class="param-switch-shell">
-          <input type="checkbox" data-json-key="${escapeParamHtml(key)}" class="dynamic-param-input sr-only" ${value ? 'checked' : ''}>
-          <span class="param-switch-ui"></span>
+        <span class="mkp-switch mkp-switch-compact">
+          <input type="checkbox" data-json-key="${escapeParamHtml(key)}" class="dynamic-param-input mkp-switch-input" ${value ? 'checked' : ''}${inputAttrs}>
+          <span class="mkp-switch-track"></span>
         </span>
       </div>
     </label>
@@ -881,6 +1155,10 @@ function createBooleanField(key, value, meta) {
 function createStandardField(key, value, meta, inputType) {
   const isTextarea = inputType === 'textarea' || meta.multiline;
   const valueText = value == null ? '' : String(value);
+  const numericConstraint = inputType === 'number' ? activeParamNumericConstraints[key] || null : null;
+  const numericAttrs = inputType === 'number'
+    ? `${numericConstraint ? ` min="${escapeParamHtml(numericConstraint.min)}" max="${escapeParamHtml(numericConstraint.max)}"` : ''} step="${numericConstraint?.integer ? '1' : 'any'}" inputmode="decimal"`
+    : '';
 
   if (inputType === 'select' && Array.isArray(meta.options)) {
     return `
@@ -912,7 +1190,7 @@ function createStandardField(key, value, meta, inputType) {
     <div class="param-row">
       ${renderFieldLabel(meta, key, meta.unit ? `单位：${meta.unit}` : '文本字段')}
       <div class="param-row-control">
-        <input type="${inputType === 'number' ? 'number' : 'text'}" step="any" data-json-key="${escapeParamHtml(key)}" value="${escapeParamHtml(valueText)}" class="dynamic-param-input param-editable param-input">
+        <input type="${inputType === 'number' ? 'number' : 'text'}"${numericAttrs} data-json-key="${escapeParamHtml(key)}" value="${escapeParamHtml(valueText)}" class="dynamic-param-input param-editable param-input">
       </div>
     </div>
   `;
@@ -967,7 +1245,9 @@ function buildParamGroupSections(flatData) {
   const groups = { meta: [], toolhead: [], wiping: [], mount: [], unmount: [], advanced: [] };
 
   Object.keys(flatData).forEach((key) => {
+    if (PARAM_HIDDEN_PUBLIC_FIELDS.has(key)) return;
     if (isAdvancedTemplateField(key)) return;
+    if (isTowerGeometryField(key)) return;
 
     const value = flatData[key];
     const meta = getParamFieldMeta(key);
@@ -989,12 +1269,29 @@ function buildParamGroupSections(flatData) {
   return groups;
 }
 
-function renderParamGroup(groupKey, cards) {
-  if (!cards.length) return '';
+function renderParamFieldByKey(key, flatData, options = {}) {
+  const value = flatData[key];
+  const meta = getParamFieldMeta(key);
+  const type = inferInputType(key, value);
+
+  if (type === 'gcode') {
+    return createGcodeField(key, value, meta);
+  }
+
+  if (type === 'boolean') {
+    return createBooleanField(key, value, meta, options.booleanOptions || {});
+  }
+
+  return createStandardField(key, value, meta, type);
+}
+
+function renderParamGroup(groupKey, cards, options = {}) {
+  const extraContent = options.extraContent || '';
+  if (!cards.length && !extraContent) return '';
 
   const meta = PARAM_GROUP_META[groupKey] || PARAM_GROUP_META.advanced;
   return `
-    <section class="params-group-section">
+    <section id="params-section-${escapeParamHtml(groupKey)}" class="params-section params-group-section">
       <div class="params-group-head">
         <div class="params-group-icon">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">${getParamGroupIcon(meta.icon)}</svg>
@@ -1007,8 +1304,170 @@ function renderParamGroup(groupKey, cards) {
       <div class="params-group-list">
         ${cards.join('')}
       </div>
+      ${extraContent}
     </section>
   `;
+}
+
+function buildParamsSectionNavMarkup(groups = {}) {
+  const sectionKeys = PARAM_SECTION_ORDER
+    .filter((groupKey) => Array.isArray(groups[groupKey]) && groups[groupKey].length > 0)
+    .slice(0, 6);
+
+  return sectionKeys.map((groupKey, index) => {
+    const meta = PARAM_GROUP_META[groupKey] || PARAM_GROUP_META.advanced;
+    return `
+      <button
+        type="button"
+        class="params-nav-item${index === 0 ? ' active theme-text' : ''}"
+        data-params-nav-target="params-section-${escapeParamHtml(groupKey)}"
+        onclick="scrollToParamsSection('params-section-${escapeParamHtml(groupKey)}')"
+      >
+        ${escapeParamHtml(meta.title)}
+      </button>
+    `;
+  }).join('');
+}
+
+function renderParamsSectionNav(groups = {}) {
+  const nav = document.getElementById('paramsSectionNav');
+  if (!nav) return;
+
+  const markup = buildParamsSectionNavMarkup(groups);
+  nav.innerHTML = markup;
+  nav.classList.toggle('hidden', !markup.trim());
+}
+
+function scrollToParamsSection(sectionId) {
+  const container = document.getElementById('paramsPageContent');
+  const target = document.getElementById(sectionId);
+  if (!container || !target) return;
+
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const targetScrollTop = container.scrollTop + (targetRect.top - containerRect.top) - 18;
+  container.scrollTo({
+    top: targetScrollTop,
+    behavior: 'smooth'
+  });
+}
+
+function syncParamsSectionNavState() {
+  const container = document.getElementById('paramsPageContent');
+  const nav = document.getElementById('paramsSectionNav');
+  if (!container) return;
+
+  const sections = Array.from(container.querySelectorAll('.params-section'));
+  const navItems = nav?.querySelectorAll('.params-nav-item') || [];
+  if (!sections.length || !navItems.length) return;
+
+  const containerRect = container.getBoundingClientRect();
+  let currentActiveId = sections[0].id;
+
+  sections.forEach((section) => {
+    const rect = section.getBoundingClientRect();
+    if (rect.top <= containerRect.top + 140) {
+      currentActiveId = section.id;
+    }
+  });
+
+  navItems.forEach((item) => {
+    const isActive = item.dataset.paramsNavTarget === currentActiveId;
+    item.classList.toggle('active', isActive);
+    item.classList.toggle('theme-text', isActive);
+    item.classList.toggle('text-gray-500', !isActive);
+    item.classList.toggle('hover:text-gray-900', !isActive);
+    item.classList.toggle('dark:hover:text-gray-200', !isActive);
+  });
+}
+
+function initParamsSectionNav() {
+  const container = document.getElementById('paramsPageContent');
+  if (!container) return;
+
+  if (container.dataset.paramsNavBound !== 'true') {
+    container.dataset.paramsNavBound = 'true';
+    container.addEventListener('scroll', () => syncParamsSectionNavState());
+  }
+
+  syncParamsSectionNavState();
+}
+
+function getTowerGeometryBooleanValue(flatData = {}, ...keys) {
+  const fallback = keys.length > 0
+    ? keys.some((key) => toFiniteTowerNumber(flatData[key]) != null && toFiniteTowerNumber(flatData[key]) > 0)
+    : false;
+
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(flatData, key)) continue;
+    const value = flatData[key];
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') return true;
+      if (normalized === 'false') return false;
+    }
+    if (typeof value === 'number') {
+      return value > 0;
+    }
+  }
+
+  return fallback;
+}
+
+function buildWipeTowerGeometryCard(flatData = {}) {
+  const slantedEnabled = getTowerGeometryBooleanValue(
+    flatData,
+    'wiping.tower_slanted_outer_wall_enabled',
+    'wiping.towerSlantedOuterWallEnabled',
+    'wiping.tower_slanted_outer_wall_width',
+    'wiping.tower_slanted_outer_wall_depth'
+  );
+  const panelClass = slantedEnabled ? 'params-inline-subpanel' : 'params-inline-subpanel hidden';
+
+  return `
+    <div class="params-inline-card" data-inline-card="wipe-tower-geometry">
+      <div class="params-inline-card-head">
+        <div>
+          <div class="params-inline-card-title">高级擦料塔几何</div>
+          <p class="params-inline-card-desc">预览占地、坐标限制和 CLI 生成共用这一组高级塔参数。</p>
+        </div>
+      </div>
+      <div class="params-group-list params-group-list-compact">
+        ${renderParamFieldByKey('wiping.tower_width', flatData)}
+        ${renderParamFieldByKey('wiping.tower_depth', flatData)}
+        ${renderParamFieldByKey('wiping.tower_brim_width', flatData)}
+        ${renderParamFieldByKey('wiping.tower_outer_wall_width', flatData)}
+        ${renderParamFieldByKey('wiping.tower_outer_wall_depth', flatData)}
+        ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_enabled', flatData, {
+          booleanOptions: { inputAttrs: 'data-tower-advanced-toggle="slanted-outer-wall"' }
+        })}
+      </div>
+      <div class="${panelClass}" data-tower-advanced-panel="slanted-outer-wall">
+        <div class="params-group-list params-group-list-compact">
+          ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_width', flatData)}
+          ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_depth', flatData)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function syncTowerAdvancedPanels(scope = document) {
+  scope.querySelectorAll('[data-tower-advanced-toggle]').forEach((input) => {
+    const sync = () => {
+      const panelId = input.dataset.towerAdvancedToggle;
+      const root = input.closest('[data-inline-card="wipe-tower-geometry"]') || scope;
+      const panel = root.querySelector(`[data-tower-advanced-panel="${panelId}"]`);
+      if (!panel) return;
+      panel.classList.toggle('hidden', !input.checked);
+    };
+
+    sync();
+    if (input.dataset.towerAdvancedBound === 'true') return;
+    input.dataset.towerAdvancedBound = 'true';
+    input.addEventListener('change', sync);
+  });
 }
 
 function resolveTemplateFieldValue(flatData, templateKey) {
@@ -1028,6 +1487,18 @@ function buildRenderableParamState(flatData = {}) {
   });
 
   injectedFlat['wiping.have_wiping_components'] = resolveEffectiveWipingTowerValueFromFlat(injectedFlat);
+  injectedFlat['wiping.use_wiping_towers'] = true;
+  injectedFlat['wiping.useWipingTowers'] = true;
+  injectedFlat['wiping.enable_wiping_tower'] = true;
+  injectedFlat['wiping.enableWipingTower'] = true;
+  injectedFlat['wiping.switch_tower_type'] = 1;
+  const towerPlacement = resolveTowerPlacement(
+    injectedFlat['wiping.wiper_x'] ?? 0,
+    injectedFlat['wiping.wiper_y'] ?? 0,
+    injectedFlat
+  );
+  injectedFlat['wiping.wiper_x'] = towerPlacement.x;
+  injectedFlat['wiping.wiper_y'] = towerPlacement.y;
 
   PARAM_TEMPLATE_FIELD_ORDER.forEach((templateKey) => {
     injectedFlat[templateKey] = normalizeParamValueByKey(templateKey, resolveTemplateFieldValue(flatData, templateKey));
@@ -1132,6 +1603,1289 @@ function buildAdvancedTemplateDisclosure(flatData) {
       </div>
     `
   };
+}
+
+function roundTowerEditorCoordinate(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function toFiniteTowerNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function getTowerEditorPrinterId(flatData = {}) {
+  const downloadContext = typeof window.__getDownloadContextView__ === 'function'
+    ? window.__getDownloadContextView__()
+    : null;
+  const printerId = flatData.printer || downloadContext?.printer?.id || selectedPrinter || '';
+  return String(printerId || '').trim().toLowerCase();
+}
+
+function resolveTowerEditorPrinterProfile(flatData = {}) {
+  return TOWER_EDITOR_PRINTER_PROFILES[getTowerEditorPrinterId(flatData)] || null;
+}
+
+function resolveTowerEditorBounds(flatData = {}) {
+  const flatBounds = {
+    minX: toFiniteTowerNumber(flatData['machine.bounds.minX']),
+    maxX: toFiniteTowerNumber(flatData['machine.bounds.maxX']),
+    minY: toFiniteTowerNumber(flatData['machine.bounds.minY']),
+    maxY: toFiniteTowerNumber(flatData['machine.bounds.maxY'])
+  };
+
+  if (
+    flatBounds.minX != null
+    && flatBounds.maxX != null
+    && flatBounds.minY != null
+    && flatBounds.maxY != null
+    && flatBounds.maxX > flatBounds.minX
+    && flatBounds.maxY > flatBounds.minY
+  ) {
+    return flatBounds;
+  }
+
+  const printerProfile = resolveTowerEditorPrinterProfile(flatData);
+  if (printerProfile?.bounds) {
+    return { ...printerProfile.bounds };
+  }
+
+  return {
+    minX: 0,
+    maxX: TOWER_EDITOR_DEFAULTS.bedWidth,
+    minY: 0,
+    maxY: TOWER_EDITOR_DEFAULTS.bedDepth
+  };
+}
+
+function intersectTowerSafeRanges(baseRange, limitRange) {
+  if (!limitRange) {
+    return {
+      minX: baseRange.minX,
+      maxX: baseRange.maxX,
+      minY: baseRange.minY,
+      maxY: baseRange.maxY
+    };
+  }
+
+  const minX = Math.max(baseRange.minX, toFiniteTowerNumber(limitRange.minX) ?? baseRange.minX);
+  const maxX = Math.min(baseRange.maxX, toFiniteTowerNumber(limitRange.maxX) ?? baseRange.maxX);
+  const minY = Math.max(baseRange.minY, toFiniteTowerNumber(limitRange.minY) ?? baseRange.minY);
+  const maxY = Math.min(baseRange.maxY, toFiniteTowerNumber(limitRange.maxY) ?? baseRange.maxY);
+
+  return {
+    minX: roundTowerEditorCoordinate(minX),
+    maxX: roundTowerEditorCoordinate(Math.max(minX, maxX)),
+    minY: roundTowerEditorCoordinate(minY),
+    maxY: roundTowerEditorCoordinate(Math.max(minY, maxY))
+  };
+}
+
+function resolveTowerEditorSafeFootprint(flatData = {}) {
+  const previewFootprint = resolveTowerPreviewFootprint(flatData);
+  return {
+    minXOffset: Math.min(TOWER_EDITOR_FOOTPRINT.minXOffset, previewFootprint.minXOffset),
+    maxXOffset: Math.max(TOWER_EDITOR_FOOTPRINT.maxXOffset, previewFootprint.maxXOffset),
+    minYOffset: Math.min(TOWER_EDITOR_FOOTPRINT.minYOffset, previewFootprint.minYOffset),
+    maxYOffset: Math.max(TOWER_EDITOR_FOOTPRINT.maxYOffset, previewFootprint.maxYOffset)
+  };
+}
+
+function buildTowerSafeRangeFromBounds(bounds, manualSafeRange = null, flatData = {}) {
+  const safeFootprint = resolveTowerEditorSafeFootprint(flatData);
+  const baseRange = {
+    minX: roundTowerEditorCoordinate((bounds?.minX ?? 0) - safeFootprint.minXOffset),
+    maxX: roundTowerEditorCoordinate((bounds?.maxX ?? TOWER_EDITOR_DEFAULTS.bedWidth) - safeFootprint.maxXOffset),
+    minY: roundTowerEditorCoordinate((bounds?.minY ?? 0) - safeFootprint.minYOffset),
+    maxY: roundTowerEditorCoordinate((bounds?.maxY ?? TOWER_EDITOR_DEFAULTS.bedDepth) - safeFootprint.maxYOffset)
+  };
+
+  return intersectTowerSafeRanges(baseRange, manualSafeRange);
+}
+
+function normalizeTowerDeadZone(zone) {
+  if (!zone || typeof zone !== 'object') return null;
+
+  const minX = toFiniteTowerNumber(zone.minX);
+  const maxX = toFiniteTowerNumber(zone.maxX);
+  const minY = toFiniteTowerNumber(zone.minY);
+  const maxY = toFiniteTowerNumber(zone.maxY);
+
+  if (minX == null || maxX == null || minY == null || maxY == null) {
+    return null;
+  }
+
+  return {
+    id: String(zone.id || ''),
+    label: String(zone.label || zone.id || '禁区'),
+    kind: String(zone.kind || 'safety'),
+    minX: roundTowerEditorCoordinate(Math.min(minX, maxX)),
+    maxX: roundTowerEditorCoordinate(Math.max(minX, maxX)),
+    minY: roundTowerEditorCoordinate(Math.min(minY, maxY)),
+    maxY: roundTowerEditorCoordinate(Math.max(minY, maxY))
+  };
+}
+
+function clipTowerDeadZoneToRange(zone, safeRange) {
+  if (!zone || !safeRange) return null;
+
+  const minX = Math.max(zone.minX, safeRange.minX);
+  const maxX = Math.min(zone.maxX, safeRange.maxX);
+  const minY = Math.max(zone.minY, safeRange.minY);
+  const maxY = Math.min(zone.maxY, safeRange.maxY);
+
+  if (maxX < minX || maxY < minY) {
+    return null;
+  }
+
+  return {
+    ...zone,
+    minX: roundTowerEditorCoordinate(minX),
+    maxX: roundTowerEditorCoordinate(maxX),
+    minY: roundTowerEditorCoordinate(minY),
+    maxY: roundTowerEditorCoordinate(maxY)
+  };
+}
+
+function resolveTowerDeadZoneSource(flatData = {}, printerProfile = null) {
+  const printerId = getTowerEditorPrinterId(flatData);
+  if (printerId === 'p1' || printerId === 'p1s' || printerId === 'x1') {
+    return BAMBU_X1_P1_FRONT_DEAD_ZONES;
+  }
+  return printerProfile?.deadZones || [];
+}
+
+function resolveTowerDeadZonesFromFlatData(flatData = {}, safeRange) {
+  const printerProfile = resolveTowerEditorPrinterProfile(flatData);
+  return resolveTowerDeadZoneSource(flatData, printerProfile)
+    .map((zone) => normalizeTowerDeadZone(zone))
+    .map((zone) => clipTowerDeadZoneToRange(zone, safeRange))
+    .filter(Boolean);
+}
+
+function getTowerEditorDeadZones(editor) {
+  try {
+    const payload = String(editor?.dataset?.towerDeadZones || '').trim();
+    if (!payload) return [];
+    const parsed = JSON.parse(payload);
+    return Array.isArray(parsed)
+      ? parsed.map((zone) => normalizeTowerDeadZone(zone)).filter(Boolean)
+      : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function isTowerPointInsideDeadZone(x, y, zone) {
+  if (!zone) return false;
+  return x >= zone.minX && x <= zone.maxX && y >= zone.minY && y <= zone.maxY;
+}
+
+function projectTowerPointOutOfDeadZone(x, y, zone, safeRange) {
+  const candidates = [];
+  const nextLeft = roundTowerEditorCoordinate(zone.minX - TOWER_DEAD_ZONE_CLEARANCE);
+  const nextRight = roundTowerEditorCoordinate(zone.maxX + TOWER_DEAD_ZONE_CLEARANCE);
+  const nextBottom = roundTowerEditorCoordinate(zone.minY - TOWER_DEAD_ZONE_CLEARANCE);
+  const nextTop = roundTowerEditorCoordinate(zone.maxY + TOWER_DEAD_ZONE_CLEARANCE);
+
+  if (nextLeft >= safeRange.minX) {
+    candidates.push({ x: nextLeft, y, distance: Math.abs(x - nextLeft) });
+  }
+
+  if (nextRight <= safeRange.maxX) {
+    candidates.push({ x: nextRight, y, distance: Math.abs(x - nextRight) });
+  }
+
+  if (nextBottom >= safeRange.minY) {
+    candidates.push({ x, y: nextBottom, distance: Math.abs(y - nextBottom) });
+  }
+
+  if (nextTop <= safeRange.maxY) {
+    candidates.push({ x, y: nextTop, distance: Math.abs(y - nextTop) });
+  }
+
+  if (!candidates.length) {
+    return {
+      x: clampTowerEditorValue(x, safeRange.minX, safeRange.maxX),
+      y: clampTowerEditorValue(y, safeRange.minY, safeRange.maxY)
+    };
+  }
+
+  candidates.sort((left, right) => left.distance - right.distance);
+  return {
+    x: roundTowerEditorCoordinate(candidates[0].x),
+    y: roundTowerEditorCoordinate(candidates[0].y)
+  };
+}
+
+function resolveTowerPlacementFromGeometry(rawX, rawY, safeRange, deadZones = [], boardStyle = 'default') {
+  const normalizedRawX = roundTowerEditorCoordinate(toFiniteTowerNumber(rawX) ?? safeRange.minX);
+  const normalizedRawY = roundTowerEditorCoordinate(toFiniteTowerNumber(rawY) ?? safeRange.minY);
+  const initialX = snapTowerAnchorCoordinate(normalizedRawX, safeRange.minX, safeRange.maxX);
+  const initialY = snapTowerAnchorCoordinate(normalizedRawY, safeRange.minY, safeRange.maxY);
+  const blockedZoneIds = deadZones
+    .filter((zone) => isTowerPointInsideDeadZone(initialX, initialY, zone))
+    .map((zone) => zone.id);
+  const blockedZoneIdSet = new Set(blockedZoneIds);
+
+  let nextX = initialX;
+  let nextY = initialY;
+  let adjustedForDeadZone = false;
+
+  for (let index = 0; index < deadZones.length * 4; index += 1) {
+    const activeZone = deadZones.find((zone) => isTowerPointInsideDeadZone(nextX, nextY, zone));
+    if (!activeZone) break;
+    blockedZoneIdSet.add(activeZone.id);
+
+    const projected = projectTowerPointOutOfDeadZone(nextX, nextY, activeZone, safeRange);
+    if (!projected || (projected.x === nextX && projected.y === nextY)) {
+      break;
+    }
+
+    nextX = snapTowerAnchorCoordinate(projected.x, safeRange.minX, safeRange.maxX);
+    nextY = snapTowerAnchorCoordinate(projected.y, safeRange.minY, safeRange.maxY);
+    adjustedForDeadZone = true;
+  }
+
+  return {
+    rawX: normalizedRawX,
+    rawY: normalizedRawY,
+    x: roundTowerEditorCoordinate(nextX),
+    y: roundTowerEditorCoordinate(nextY),
+    adjusted: normalizedRawX !== roundTowerEditorCoordinate(nextX)
+      || normalizedRawY !== roundTowerEditorCoordinate(nextY),
+    adjustedForDeadZone,
+    blockedZoneIds: Array.from(blockedZoneIdSet),
+    safeRange,
+    deadZones,
+    boardStyle
+  };
+}
+
+function resolveTowerPlacement(rawX, rawY, flatData = {}) {
+  const bounds = resolveTowerEditorBounds(flatData);
+  const printerProfile = resolveTowerEditorPrinterProfile(flatData);
+  const safeRange = buildTowerSafeRangeFromBounds(bounds, printerProfile?.manualSafeRange || null, flatData);
+  const deadZones = resolveTowerDeadZonesFromFlatData(flatData, safeRange);
+  return resolveTowerPlacementFromGeometry(rawX, rawY, safeRange, deadZones, printerProfile?.boardStyle || 'default');
+}
+
+function getTowerEditorMetrics(flatData = {}) {
+  const bounds = resolveTowerEditorBounds(flatData);
+  const placement = resolveTowerPlacement(flatData['wiping.wiper_x'] ?? 0, flatData['wiping.wiper_y'] ?? 0, flatData);
+  const previewFootprint = resolveTowerPreviewFootprint(flatData);
+  return {
+    bedMinX: bounds.minX,
+    bedMinY: bounds.minY,
+    bedMaxX: bounds.maxX,
+    bedMaxY: bounds.maxY,
+    bedWidth: roundTowerEditorCoordinate(bounds.maxX - bounds.minX),
+    bedDepth: roundTowerEditorCoordinate(bounds.maxY - bounds.minY),
+    towerWidth: previewFootprint.width,
+    towerDepth: previewFootprint.depth,
+    wiperX: placement.x,
+    wiperY: placement.y,
+    rawWiperX: placement.rawX,
+    rawWiperY: placement.rawY,
+    adjusted: placement.adjusted,
+    boardStyle: placement.boardStyle,
+    deadZones: placement.deadZones,
+    blockedZoneIds: placement.blockedZoneIds,
+    safeRange: placement.safeRange
+  };
+}
+
+function clampTowerPreviewCoordinate(value, min, max) {
+  return roundTowerEditorCoordinate(clampTowerEditorValue(value, min, max));
+}
+
+function buildTowerPreviewBounds(minX, maxX, minY, maxY, metrics) {
+  return {
+    minX: clampTowerPreviewCoordinate(minX, metrics.bedMinX, metrics.bedMaxX),
+    maxX: clampTowerPreviewCoordinate(maxX, metrics.bedMinX, metrics.bedMaxX),
+    minY: clampTowerPreviewCoordinate(minY, metrics.bedMinY, metrics.bedMaxY),
+    maxY: clampTowerPreviewCoordinate(maxY, metrics.bedMinY, metrics.bedMaxY)
+  };
+}
+
+function shiftTowerPreviewAxisIntoBounds(min, max, boundsMin, boundsMax) {
+  let nextMin = roundTowerEditorCoordinate(Math.min(min, max));
+  let nextMax = roundTowerEditorCoordinate(Math.max(min, max));
+
+  if (!Number.isFinite(boundsMin) || !Number.isFinite(boundsMax) || boundsMax < boundsMin) {
+    return { min: nextMin, max: nextMax };
+  }
+
+  const span = nextMax - nextMin;
+  const boundsSpan = boundsMax - boundsMin;
+  if (span > boundsSpan) {
+    const center = roundTowerEditorCoordinate((boundsMin + boundsMax) / 2);
+    const halfSpan = roundTowerEditorCoordinate(span / 2);
+    return {
+      min: roundTowerEditorCoordinate(center - halfSpan),
+      max: roundTowerEditorCoordinate(center + halfSpan)
+    };
+  }
+
+  if (nextMin < boundsMin) {
+    const offset = boundsMin - nextMin;
+    nextMin += offset;
+    nextMax += offset;
+  }
+
+  if (nextMax > boundsMax) {
+    const offset = nextMax - boundsMax;
+    nextMin -= offset;
+    nextMax -= offset;
+  }
+
+  return {
+    min: roundTowerEditorCoordinate(nextMin),
+    max: roundTowerEditorCoordinate(nextMax)
+  };
+}
+
+function buildTowerPreviewVisualBounds(minX, maxX, minY, maxY, metrics = null) {
+  const rawBounds = {
+    minX: roundTowerEditorCoordinate(Math.min(minX, maxX)),
+    maxX: roundTowerEditorCoordinate(Math.max(minX, maxX)),
+    minY: roundTowerEditorCoordinate(Math.min(minY, maxY)),
+    maxY: roundTowerEditorCoordinate(Math.max(minY, maxY))
+  };
+
+  if (!metrics) {
+    return rawBounds;
+  }
+
+  const shiftedX = shiftTowerPreviewAxisIntoBounds(rawBounds.minX, rawBounds.maxX, metrics.bedMinX, metrics.bedMaxX);
+  const shiftedY = shiftTowerPreviewAxisIntoBounds(rawBounds.minY, rawBounds.maxY, metrics.bedMinY, metrics.bedMaxY);
+
+  return {
+    minX: shiftedX.min,
+    maxX: shiftedX.max,
+    minY: shiftedY.min,
+    maxY: shiftedY.max
+  };
+}
+
+function normalizeTowerCanvasAxisPercent(normalized) {
+  const safeNormalized = clampTowerEditorValue(normalized, 0, 1);
+  const usablePercent = Math.max(0, 100 - (TOWER_CANVAS_EDGE_INSET_PERCENT * 2));
+  return TOWER_CANVAS_EDGE_INSET_PERCENT + (safeNormalized * usablePercent);
+}
+
+function denormalizeTowerCanvasAxisPercent(percent) {
+  const usablePercent = Math.max(0, 100 - (TOWER_CANVAS_EDGE_INSET_PERCENT * 2));
+  if (usablePercent <= 0) return 0;
+  return clampTowerEditorValue((percent - TOWER_CANVAS_EDGE_INSET_PERCENT) / usablePercent, 0, 1);
+}
+
+function getTowerCanvasLeftPercent(x, metrics) {
+  if (metrics.bedWidth <= 0) return 0;
+  return normalizeTowerCanvasAxisPercent((x - metrics.bedMinX) / metrics.bedWidth);
+}
+
+function getTowerCanvasTopPercent(y, metrics) {
+  if (metrics.bedDepth <= 0) return 0;
+  return normalizeTowerCanvasAxisPercent(1 - ((y - metrics.bedMinY) / metrics.bedDepth));
+}
+
+function getTowerCanvasRectPercent(bounds, metrics) {
+  const usablePercent = Math.max(0, 100 - (TOWER_CANVAS_EDGE_INSET_PERCENT * 2));
+  return {
+    left: getTowerCanvasLeftPercent(bounds.minX, metrics),
+    top: getTowerCanvasTopPercent(bounds.maxY, metrics),
+    width: metrics.bedWidth > 0 ? ((bounds.maxX - bounds.minX) / metrics.bedWidth) * usablePercent : 0,
+    height: metrics.bedDepth > 0 ? ((bounds.maxY - bounds.minY) / metrics.bedDepth) * usablePercent : 0
+  };
+}
+
+function snapTowerAnchorCoordinate(value, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY) {
+  const numeric = toFiniteTowerNumber(value);
+  if (numeric == null) {
+    return Number.isFinite(min) ? roundTowerEditorCoordinate(min) : 0;
+  }
+  return roundTowerEditorCoordinate(clampTowerEditorValue(Math.round(numeric), min, max));
+}
+
+function getTowerPreviewOverrideNumber(flatData = {}, keys = [], fallback = null) {
+  for (const key of keys) {
+    const numeric = toFiniteTowerNumber(flatData[key]);
+    if (numeric != null && numeric >= 0) {
+      return numeric;
+    }
+  }
+  return fallback;
+}
+
+function formatTowerEditorMeasure(value) {
+  const numeric = toFiniteTowerNumber(value);
+  if (numeric == null) return '--';
+  return Number.isInteger(numeric) ? String(numeric) : String(roundTowerEditorCoordinate(numeric));
+}
+
+function resolveTowerGeometryState(flatData = {}) {
+  const coreWidth = Math.max(20, getTowerPreviewOverrideNumber(flatData, [
+    'wiping.tower_preview_width',
+    'wiping.towerPreviewWidth',
+    'wiping.tower_width',
+    'wiping.towerWidth'
+  ], TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.width));
+  const coreDepth = Math.max(20, getTowerPreviewOverrideNumber(flatData, [
+    'wiping.tower_preview_depth',
+    'wiping.towerPreviewDepth',
+    'wiping.tower_depth',
+    'wiping.towerDepth'
+  ], TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.depth));
+  const brimWidth = Math.max(0, getTowerPreviewOverrideNumber(flatData, [
+    'wiping.tower_preview_expansion',
+    'wiping.towerPreviewExpansion',
+    'wiping.tower_brim_width',
+    'wiping.towerBrimWidth'
+  ], 0));
+  const outerWallWidth = Math.max(0, getTowerPreviewOverrideNumber(flatData, [
+    'wiping.tower_outer_wall_width',
+    'wiping.towerOuterWallWidth'
+  ], 0));
+  const outerWallDepth = Math.max(0, getTowerPreviewOverrideNumber(flatData, [
+    'wiping.tower_outer_wall_depth',
+    'wiping.towerOuterWallDepth'
+  ], outerWallWidth));
+  const slantedOuterWallEnabled = getTowerGeometryBooleanValue(
+    flatData,
+    'wiping.tower_slanted_outer_wall_enabled',
+    'wiping.towerSlantedOuterWallEnabled',
+    'wiping.tower_slanted_outer_wall_width',
+    'wiping.tower_slanted_outer_wall_depth'
+  );
+  const slantedOuterWallWidth = slantedOuterWallEnabled
+    ? Math.max(0, getTowerPreviewOverrideNumber(flatData, [
+      'wiping.tower_slanted_outer_wall_width',
+      'wiping.towerSlantedOuterWallWidth'
+    ], 0))
+    : 0;
+  const slantedOuterWallDepth = slantedOuterWallEnabled
+    ? Math.max(0, getTowerPreviewOverrideNumber(flatData, [
+      'wiping.tower_slanted_outer_wall_depth',
+      'wiping.towerSlantedOuterWallDepth'
+    ], slantedOuterWallWidth))
+    : 0;
+  const layerWidth = coreWidth + ((outerWallWidth + slantedOuterWallWidth) * 2);
+  const layerDepth = coreDepth + ((outerWallDepth + slantedOuterWallDepth) * 2);
+  const baseWidth = layerWidth + (brimWidth * 2);
+  const baseDepth = layerDepth + (brimWidth * 2);
+
+  return {
+    coreWidth: roundTowerEditorCoordinate(coreWidth),
+    coreDepth: roundTowerEditorCoordinate(coreDepth),
+    brimWidth: roundTowerEditorCoordinate(brimWidth),
+    outerWallWidth: roundTowerEditorCoordinate(outerWallWidth),
+    outerWallDepth: roundTowerEditorCoordinate(outerWallDepth),
+    slantedOuterWallEnabled,
+    slantedOuterWallWidth: roundTowerEditorCoordinate(slantedOuterWallWidth),
+    slantedOuterWallDepth: roundTowerEditorCoordinate(slantedOuterWallDepth),
+    layerWidth: roundTowerEditorCoordinate(layerWidth),
+    layerDepth: roundTowerEditorCoordinate(layerDepth),
+    baseWidth: roundTowerEditorCoordinate(baseWidth),
+    baseDepth: roundTowerEditorCoordinate(baseDepth)
+  };
+}
+
+function resolveTowerPreviewFootprint(flatData = {}) {
+  const geometry = resolveTowerGeometryState(flatData);
+  const width = geometry.baseWidth;
+  const depth = geometry.baseDepth;
+  const displayWidth = Math.max(
+    roundTowerEditorCoordinate(width * TOWER_EDITOR_VISUAL_SCALE),
+    TOWER_EDITOR_VISUAL_MIN_SIZE
+  );
+  const displayDepth = Math.max(
+    roundTowerEditorCoordinate(depth * TOWER_EDITOR_VISUAL_SCALE),
+    TOWER_EDITOR_VISUAL_MIN_SIZE
+  );
+  const halfWidth = width / 2;
+  const halfDepth = depth / 2;
+  const displayHalfWidth = displayWidth / 2;
+  const displayHalfDepth = displayDepth / 2;
+
+  return {
+    ...geometry,
+    width: roundTowerEditorCoordinate(width),
+    depth: roundTowerEditorCoordinate(depth),
+    displayWidth: roundTowerEditorCoordinate(displayWidth),
+    displayDepth: roundTowerEditorCoordinate(displayDepth),
+    minXOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX - halfWidth),
+    maxXOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX + halfWidth),
+    minYOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY - halfDepth),
+    maxYOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY + halfDepth),
+    displayMinXOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX - displayHalfWidth),
+    displayMaxXOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX + displayHalfWidth),
+    displayMinYOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY - displayHalfDepth),
+    displayMaxYOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY + displayHalfDepth)
+  };
+}
+
+function getTowerPreviewFootprintFromEditor(editor) {
+  try {
+    const payload = String(editor?.dataset?.towerFootprintGeometry || '').trim();
+    if (!payload) {
+      return resolveTowerPreviewFootprint({});
+    }
+    const parsed = JSON.parse(payload);
+    const defaultDisplayWidth = Math.max(TOWER_EDITOR_VISUAL_MIN_SIZE, TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.width * TOWER_EDITOR_VISUAL_SCALE);
+    const defaultDisplayDepth = Math.max(TOWER_EDITOR_VISUAL_MIN_SIZE, TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.depth * TOWER_EDITOR_VISUAL_SCALE);
+    const defaultDisplayHalfWidth = defaultDisplayWidth / 2;
+    const defaultDisplayHalfDepth = defaultDisplayDepth / 2;
+    return {
+      width: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.width) ?? TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.width),
+      depth: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.depth) ?? TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.depth),
+      displayWidth: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayWidth) ?? defaultDisplayWidth),
+      displayDepth: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayDepth) ?? defaultDisplayDepth),
+      minXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.minXOffset) ?? 5),
+      maxXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.maxXOffset) ?? 25),
+      minYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.minYOffset) ?? 5),
+      maxYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.maxYOffset) ?? 25),
+      displayMinXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMinXOffset) ?? (TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX - defaultDisplayHalfWidth)),
+      displayMaxXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMaxXOffset) ?? (TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX + defaultDisplayHalfWidth)),
+      displayMinYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMinYOffset) ?? (TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY - defaultDisplayHalfDepth)),
+      displayMaxYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMaxYOffset) ?? (TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY + defaultDisplayHalfDepth))
+    };
+  } catch (_error) {
+    return resolveTowerPreviewFootprint({});
+  }
+}
+
+function getTowerPreviewCenterOffset(footprint, axis = 'x') {
+  if (axis === 'y') {
+    const minOffset = toFiniteTowerNumber(footprint?.displayMinYOffset ?? footprint?.minYOffset) ?? 0;
+    const maxOffset = toFiniteTowerNumber(footprint?.displayMaxYOffset ?? footprint?.maxYOffset) ?? 0;
+    return roundTowerEditorCoordinate((minOffset + maxOffset) / 2);
+  }
+
+  const minOffset = toFiniteTowerNumber(footprint?.displayMinXOffset ?? footprint?.minXOffset) ?? 0;
+  const maxOffset = toFiniteTowerNumber(footprint?.displayMaxXOffset ?? footprint?.maxXOffset) ?? 0;
+  return roundTowerEditorCoordinate((minOffset + maxOffset) / 2);
+}
+
+function getTowerDeadZoneRenderPriority(zone) {
+  return zone?.kind === 'safety' ? 1 : 0;
+}
+
+function clampTowerEditorValue(value, min = 0, max = Number.POSITIVE_INFINITY) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return Number.isFinite(min) ? min : 0;
+  if (max < min) return min;
+  return Math.max(min, Math.min(max, numeric));
+}
+
+function getTowerEditorSafeRange(editor) {
+  const minX = Number(editor?.dataset?.towerMinX || TOWER_EDITOR_DEFAULTS.safeMinX);
+  const minY = Number(editor?.dataset?.towerMinY || TOWER_EDITOR_DEFAULTS.safeMinY);
+  const maxX = Number(editor?.dataset?.towerMaxX || Math.max(minX, TOWER_EDITOR_DEFAULTS.bedWidth - TOWER_EDITOR_DEFAULTS.safeMaxXOffset));
+  const maxY = Number(editor?.dataset?.towerMaxY || Math.max(minY, TOWER_EDITOR_DEFAULTS.bedDepth - TOWER_EDITOR_DEFAULTS.safeMaxYOffset));
+
+  return { minX, maxX, minY, maxY };
+}
+
+function getTowerEditorAxisRange(editor, axis = 'x') {
+  const range = getTowerEditorSafeRange(editor);
+  if (axis === 'y') {
+    return { min: range.minY, max: range.maxY };
+  }
+  return { min: range.minX, max: range.maxX };
+}
+
+function getTowerCoordinateEditorInput(editor, axis = 'x') {
+  return editor?.querySelector(`[data-tower-coordinate-input="${axis}"]`) || null;
+}
+
+function syncTowerCoordinateDisplayField(field, value) {
+  if (!field) return;
+  const nextValue = String(value ?? '');
+  if ('value' in field) {
+    field.value = nextValue;
+    return;
+  }
+  field.textContent = nextValue;
+}
+
+function setTowerEditorFeedback(editor, message = '', options = {}) {
+  if (!editor) return;
+
+  const axis = options.axis === 'x' || options.axis === 'y' ? options.axis : '';
+  const tone = options.tone || 'warning';
+  const feedback = editor.querySelector('[data-tower-feedback]');
+  const xInput = getTowerCoordinateEditorInput(editor, 'x');
+  const yInput = getTowerCoordinateEditorInput(editor, 'y');
+
+  [xInput, yInput].forEach((input) => {
+    if (!input) return;
+    input.classList.remove('is-invalid');
+    input.removeAttribute('aria-invalid');
+  });
+
+  const invalidInput = axis === 'x' ? xInput : axis === 'y' ? yInput : null;
+  if (message && invalidInput) {
+    invalidInput.classList.add('is-invalid');
+    invalidInput.setAttribute('aria-invalid', 'true');
+  }
+
+  if (!feedback) return;
+  feedback.textContent = message;
+  feedback.classList.toggle('is-visible', !!message);
+  if (message) {
+    feedback.dataset.tone = tone;
+  } else {
+    delete feedback.dataset.tone;
+  }
+}
+
+function sanitizeTowerCoordinateInputValue(value) {
+  const rawValue = String(value ?? '').trim();
+  if (!rawValue) return null;
+
+  const normalized = rawValue.replace(/,/g, '.');
+  const integerMatch = normalized.match(/^-?\d+/);
+  if (integerMatch) {
+    return Number.parseInt(integerMatch[0], 10);
+  }
+
+  const numeric = Number(normalized);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+
+  return numeric < 0 ? Math.ceil(numeric) : Math.floor(numeric);
+}
+
+function buildTowerDragTooltipHtml(placement) {
+  return `
+    <div class="tower-drag-tooltip">
+      <div class="tower-drag-tooltip-title">\u5750\u6807</div>
+      <div class="tower-drag-tooltip-value">X${escapeParamHtml(placement?.x ?? '--')} \u00b7 Y${escapeParamHtml(placement?.y ?? '--')}</div>
+    </div>
+  `;
+}
+
+function showTowerDragTooltip(editor, placement) {
+  const footprint = editor?.querySelector('[data-tower-footprint]');
+  if (!footprint || typeof window.showFloatingTooltip !== 'function') {
+    return;
+  }
+
+  footprint.dataset.tooltipHtml = buildTowerDragTooltipHtml(placement);
+  window.showFloatingTooltip?.(footprint);
+}
+
+function hideTowerDragTooltip(editor, options = {}) {
+  const footprint = editor?.querySelector('[data-tower-footprint]');
+  if (footprint) {
+    delete footprint.dataset.tooltipHtml;
+  }
+  window.hideFloatingTooltip?.(options);
+}
+
+function applyTowerCoordinateInput(editor, axis, rawValue) {
+  if (!editor) return null;
+
+  const input = getTowerCoordinateEditorInput(editor, axis);
+  const parsed = sanitizeTowerCoordinateInputValue(rawValue);
+  const currentX = Number(editor.dataset.towerX || 0);
+  const currentY = Number(editor.dataset.towerY || 0);
+
+  if (parsed == null) {
+    syncTowerCoordinateDisplayField(input, axis === 'y' ? currentY : currentX);
+    setTowerEditorFeedback(editor, '');
+    return null;
+  }
+
+  const range = getTowerEditorAxisRange(editor, axis);
+  const clamped = snapTowerAnchorCoordinate(parsed, range.min, range.max);
+  const placement = axis === 'y'
+    ? writeTowerPositionEditorValue(editor, currentX, clamped)
+    : writeTowerPositionEditorValue(editor, clamped, currentY);
+
+  if (parsed < range.min || parsed > range.max) {
+    setTowerEditorFeedback(editor, `\u8BF7\u8F93\u5165 ${range.min}-${range.max} \u533A\u95F4\u7684\u6570\u3002`, { axis, tone: 'warning' });
+    return placement;
+  }
+
+  if (placement?.adjustedForDeadZone) {
+    setTowerEditorFeedback(editor, '\u5F53\u524D\u4F4D\u7F6E\u5728\u7981\u533A\u5185\uff0c\u5DF2\u81EA\u52A8\u79FB\u5230\u5B89\u5168\u70B9\u3002', { tone: 'warning' });
+    return placement;
+  }
+
+  setTowerEditorFeedback(editor, '');
+  return placement;
+}
+
+function resolveTowerEditorPlacement(editor, nextX, nextY) {
+  const range = getTowerEditorSafeRange(editor);
+  const deadZones = getTowerEditorDeadZones(editor);
+  const boardStyle = String(editor?.dataset?.towerBoardStyle || 'default');
+  return resolveTowerPlacementFromGeometry(nextX, nextY, range, deadZones, boardStyle);
+}
+
+function buildTowerPositionDisclosure(flatData) {
+  const metrics = getTowerEditorMetrics(flatData);
+  const range = metrics.safeRange;
+  const clampedWiperX = clampTowerEditorValue(metrics.wiperX, range.minX, range.maxX);
+  const clampedWiperY = clampTowerEditorValue(metrics.wiperY, range.minY, range.maxY);
+  const previewFootprint = resolveTowerPreviewFootprint(flatData);
+  const safeFootprint = resolveTowerEditorSafeFootprint(flatData);
+  const towerLeftPercent = getTowerCanvasLeftPercent(clampedWiperX, metrics);
+  const towerTopPercent = getTowerCanvasTopPercent(clampedWiperY, metrics);
+  const safeAreaBounds = buildTowerPreviewBounds(
+    range.minX + safeFootprint.minXOffset,
+    range.maxX + safeFootprint.maxXOffset,
+    range.minY + safeFootprint.minYOffset,
+    range.maxY + safeFootprint.maxYOffset,
+    metrics
+  );
+  const safeAreaStyle = getTowerCanvasRectPercent(safeAreaBounds, metrics);
+  const footprintBounds = buildTowerPreviewVisualBounds(
+    clampedWiperX + previewFootprint.displayMinXOffset,
+    clampedWiperX + previewFootprint.displayMaxXOffset,
+    clampedWiperY + previewFootprint.displayMinYOffset,
+    clampedWiperY + previewFootprint.displayMaxYOffset,
+    metrics
+  );
+  const footprintStyle = getTowerCanvasRectPercent(footprintBounds, metrics);
+  const visualDeadZones = [...metrics.deadZones].sort((left, right) => getTowerDeadZoneRenderPriority(left) - getTowerDeadZoneRenderPriority(right));
+  const deadZoneMarkup = visualDeadZones.map((zone) => {
+    const zoneStyle = getTowerCanvasRectPercent(zone, metrics);
+    const canRenderZoneLabel = zoneStyle.width >= 14 && zoneStyle.height >= 10;
+    return `
+      <div
+        class="tower-dead-zone tower-dead-zone--${escapeParamHtml(zone.kind || 'safety')}"
+        style="left:${zoneStyle.left}%;top:${zoneStyle.top}%;width:${zoneStyle.width}%;height:${zoneStyle.height}%"
+        title="${escapeParamHtml(zone.label)}"
+      >
+        ${canRenderZoneLabel ? `<span class="tower-dead-zone-label">${escapeParamHtml(zone.label)}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+  const legendMarkup = metrics.deadZones.map((zone) => `
+    <div class="tower-position-chip tower-position-chip--legend">
+      <span class="tower-legend-swatch tower-legend-swatch--${escapeParamHtml(zone.kind || 'safety')}"></span>
+      ${escapeParamHtml(zone.label)}
+    </div>
+  `).join('');
+  // Legacy smoke marker: <span class="tower-footprint-label">濉?/span>
+  const adjustmentChip = metrics.adjusted
+    ? '<div class="tower-position-chip tower-position-chip--warning">已自动修正到安全落点</div>'
+    : '';
+
+  return {
+    id: 'tower-position',
+    title: '擦料塔位置预览',
+    desc: '底部展开后可以直接拖动擦料塔，坐标会同步回写到上面的 X / Y 参数框。',
+    badge: metrics.boardStyle === 'bambu-x1' ? 'P1 / X1 安全限制' : '实验中',
+    content: `
+      <div class="params-disclosure-note">
+        红色区域表示不能放置擦料塔，虚线框表示当前允许的安全落点范围。
+      </div>
+      <div
+        class="tower-position-editor"
+        data-tower-editor
+        data-tower-x="${escapeParamHtml(clampedWiperX)}"
+        data-tower-y="${escapeParamHtml(clampedWiperY)}"
+        data-bed-min-x="${metrics.bedMinX}"
+        data-bed-min-y="${metrics.bedMinY}"
+        data-bed-width="${metrics.bedWidth}"
+        data-bed-depth="${metrics.bedDepth}"
+        data-tower-min-x="${range.minX}"
+        data-tower-max-x="${range.maxX}"
+        data-tower-min-y="${range.minY}"
+        data-tower-max-y="${range.maxY}"
+        data-tower-width="${metrics.towerWidth}"
+        data-tower-depth="${metrics.towerDepth}"
+        data-tower-x-input="wiping.wiper_x"
+        data-tower-y-input="wiping.wiper_y"
+        data-tower-board-style="${escapeParamHtml(metrics.boardStyle)}"
+        data-tower-dead-zones="${escapeParamHtml(JSON.stringify(metrics.deadZones))}"
+        data-tower-footprint-geometry="${escapeParamHtml(JSON.stringify(previewFootprint))}"
+      >
+        <div class="tower-position-toolbar">
+          <label class="tower-position-coordinate">
+            <span class="tower-position-coordinate-label">X</span>
+            <input
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              class="tower-position-coordinate-input"
+              data-tower-coordinate-input="x"
+              data-tower-x-label
+              value="${escapeParamHtml(clampedWiperX)}"
+              aria-label="Tower X coordinate"
+            >
+          </label>
+          <label class="tower-position-coordinate">
+            <span class="tower-position-coordinate-label">Y</span>
+            <input
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              class="tower-position-coordinate-input"
+              data-tower-coordinate-input="y"
+              data-tower-y-label
+              value="${escapeParamHtml(clampedWiperY)}"
+              aria-label="Tower Y coordinate"
+            >
+          </label>
+          <div class="tower-position-chip">Bed ${metrics.bedWidth} x ${metrics.bedDepth}</div>
+          <div class="tower-position-chip">Tower ${escapeParamHtml(formatTowerEditorMeasure(previewFootprint.width))} x ${escapeParamHtml(formatTowerEditorMeasure(previewFootprint.depth))}</div>
+          ${adjustmentChip}
+        </div>
+        <div class="tower-position-feedback" data-tower-feedback aria-live="polite"></div>
+        <div class="tower-position-legend">
+          ${legendMarkup}
+        </div>
+        <div class="tower-position-canvas tower-position-canvas--${escapeParamHtml(metrics.boardStyle)}" data-tower-canvas>
+          <div class="tower-bed-grid" aria-hidden="true"></div>
+          <div
+            class="tower-safe-area"
+            style="left:${safeAreaStyle.left}%;top:${safeAreaStyle.top}%;width:${safeAreaStyle.width}%;height:${safeAreaStyle.height}%"
+          ></div>
+          ${deadZoneMarkup}
+          <div
+            class="tower-footprint"
+            data-tower-footprint
+            data-tower-handle
+            data-tooltip-anchor-align="center"
+            style="left:${footprintStyle.left}%;top:${footprintStyle.top}%;width:${footprintStyle.width}%;height:${footprintStyle.height}%"
+            aria-label="Tower footprint"
+            title="Drag to move the wipe tower"
+          >
+            <span class="tower-footprint-label">塔</span>
+          </div>
+          <div class="tower-bed-origin">${metrics.bedMinX},${metrics.bedMinY}</div>
+          <div class="tower-bed-corner">${metrics.bedMaxX},${metrics.bedMaxY}</div>
+          <button
+            type="button"
+            class="tower-position-handle"
+            data-tower-handle
+            style="left:${towerLeftPercent}%;top:${towerTopPercent}%"
+            aria-label="擦料塔位置"
+            title="拖动以调整擦料塔位置"
+          >
+            <span>塔</span>
+          </button>
+        </div>
+      </div>
+    `
+  };
+
+  /*
+  return {
+    id: 'tower-position',
+    title: '擦料塔位置预览',
+    desc: '在底部展开后可直接拖动擦料塔，坐标会同步回写到上面的 X / Y 参数框。',
+    badge: '实验中',
+    content: `
+      <div class="params-disclosure-note">
+        当前版本先提供一个轻量预览拖拽器，用来替代盲填坐标。下一轮会继续补齐安全范围夹取和运行时诊断。
+      </div>
+      <div
+        class="tower-position-editor"
+        data-tower-editor
+        data-tower-x="${escapeParamHtml(metrics.wiperX)}"
+        data-tower-y="${escapeParamHtml(metrics.wiperY)}"
+        data-bed-min-x="${metrics.bedMinX}"
+        data-bed-min-y="${metrics.bedMinY}"
+        data-bed-width="${metrics.bedWidth}"
+        data-bed-depth="${metrics.bedDepth}"
+        data-tower-min-x="${range.minX}"
+        data-tower-max-x="${range.maxX}"
+        data-tower-min-y="${range.minY}"
+        data-tower-max-y="${range.maxY}"
+        data-tower-width="${metrics.towerWidth}"
+        data-tower-depth="${metrics.towerDepth}"
+        data-tower-x-input="wiping.wiper_x"
+        data-tower-y-input="wiping.wiper_y"
+      >
+        <div class="tower-position-toolbar">
+          <div class="tower-position-chip">X <strong data-tower-x-label>${escapeParamHtml(clampedWiperX)}</strong></div>
+          <div class="tower-position-chip">Y <strong data-tower-y-label>${escapeParamHtml(clampedWiperY)}</strong></div>
+          <div class="tower-position-chip">Bed ${metrics.bedWidth} x ${metrics.bedDepth}</div>
+        </div>
+        <div class="tower-position-canvas" data-tower-canvas>
+          <div class="tower-bed-grid" aria-hidden="true"></div>
+          <div class="tower-bed-origin">${metrics.bedMinX},${metrics.bedMinY}</div>
+          <div class="tower-bed-corner">${metrics.bedMaxX},${metrics.bedMaxY}</div>
+          <button
+            type="button"
+            class="tower-position-handle"
+            data-tower-handle
+            style="left:${towerLeftPercent}%;top:${towerTopPercent}%"
+            aria-label="擦料塔位置"
+            title="拖动以调整擦料塔位置"
+          >
+            <span>塔</span>
+          </button>
+        </div>
+      </div>
+    `
+  };
+  */
+}
+
+function updateTowerPositionEditor(editor) {
+  if (!editor) return;
+  const handle = editor.querySelector('[data-tower-handle]');
+  const footprint = editor.querySelector('[data-tower-footprint]');
+  const xLabel = editor.querySelector('[data-tower-x-label]');
+  const yLabel = editor.querySelector('[data-tower-y-label]');
+  if (!handle) return;
+
+  const bedMinX = Number(editor.dataset.bedMinX || 0);
+  const bedMinY = Number(editor.dataset.bedMinY || 0);
+  const bedWidth = Number(editor.dataset.bedWidth || TOWER_EDITOR_DEFAULTS.bedWidth);
+  const bedDepth = Number(editor.dataset.bedDepth || TOWER_EDITOR_DEFAULTS.bedDepth);
+  const placement = resolveTowerEditorPlacement(editor, editor.dataset.towerX, editor.dataset.towerY);
+  const metrics = {
+    bedMinX,
+    bedMinY,
+    bedMaxX: bedMinX + bedWidth,
+    bedMaxY: bedMinY + bedDepth,
+    bedWidth,
+    bedDepth
+  };
+  const previewFootprint = getTowerPreviewFootprintFromEditor(editor);
+
+  editor.dataset.towerX = String(roundTowerEditorCoordinate(placement.x));
+  editor.dataset.towerY = String(roundTowerEditorCoordinate(placement.y));
+  if (handle && handle !== footprint) {
+    const left = getTowerCanvasLeftPercent(placement.x, metrics);
+    const top = getTowerCanvasTopPercent(placement.y, metrics);
+    handle.style.left = `${left}%`;
+    handle.style.top = `${top}%`;
+  }
+  if (footprint) {
+    const footprintBounds = buildTowerPreviewVisualBounds(
+      placement.x + previewFootprint.displayMinXOffset,
+      placement.x + previewFootprint.displayMaxXOffset,
+      placement.y + previewFootprint.displayMinYOffset,
+      placement.y + previewFootprint.displayMaxYOffset,
+      metrics
+    );
+    const footprintStyle = getTowerCanvasRectPercent(footprintBounds, metrics);
+    footprint.style.left = `${footprintStyle.left}%`;
+    footprint.style.top = `${footprintStyle.top}%`;
+    footprint.style.width = `${footprintStyle.width}%`;
+    footprint.style.height = `${footprintStyle.height}%`;
+  }
+  syncTowerCoordinateDisplayField(xLabel, editor.dataset.towerX);
+  syncTowerCoordinateDisplayField(yLabel, editor.dataset.towerY);
+}
+
+function syncTowerPositionEditorsFromInputs() {
+  document.querySelectorAll('[data-tower-editor]').forEach((editor) => {
+    const xKey = editor.dataset.towerXInput || 'wiping.wiper_x';
+    const yKey = editor.dataset.towerYInput || 'wiping.wiper_y';
+    const xInput = document.querySelector(`.dynamic-param-input[data-json-key="${CSS.escape(xKey)}"]`);
+    const yInput = document.querySelector(`.dynamic-param-input[data-json-key="${CSS.escape(yKey)}"]`);
+    const placement = resolveTowerEditorPlacement(
+      editor,
+      xInput?.value ?? editor.dataset.towerX ?? 0,
+      yInput?.value ?? editor.dataset.towerY ?? 0
+    );
+    editor.dataset.towerX = String(placement.x);
+    editor.dataset.towerY = String(placement.y);
+    updateTowerPositionEditor(editor);
+    setTowerEditorFeedback(editor, '');
+  });
+}
+
+function writeTowerPositionEditorValue(editor, nextX, nextY) {
+  if (!editor) return;
+
+  const xKey = editor.dataset.towerXInput || 'wiping.wiper_x';
+  const yKey = editor.dataset.towerYInput || 'wiping.wiper_y';
+  const xInput = document.querySelector(`.dynamic-param-input[data-json-key="${CSS.escape(xKey)}"]`);
+  const yInput = document.querySelector(`.dynamic-param-input[data-json-key="${CSS.escape(yKey)}"]`);
+  const placement = resolveTowerEditorPlacement(editor, nextX, nextY);
+  const xValue = placement.x;
+  const yValue = placement.y;
+
+  editor.dataset.towerX = String(xValue);
+  editor.dataset.towerY = String(yValue);
+
+  if (xInput) {
+    xInput.value = String(xValue);
+    xInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  if (yInput) {
+    yInput.value = String(yValue);
+    yInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  updateTowerPositionEditor(editor);
+  return placement;
+}
+
+function updateTowerPositionFromPointer(editor, clientX, clientY) {
+  const canvas = editor?.querySelector('[data-tower-canvas]');
+  if (!canvas) return null;
+
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+
+  const bedMinX = Number(editor.dataset.bedMinX || 0);
+  const bedMinY = Number(editor.dataset.bedMinY || 0);
+  const bedWidth = Number(editor.dataset.bedWidth || TOWER_EDITOR_DEFAULTS.bedWidth);
+  const bedDepth = Number(editor.dataset.bedDepth || TOWER_EDITOR_DEFAULTS.bedDepth);
+  const previewFootprint = getTowerPreviewFootprintFromEditor(editor);
+  const centerOffsetX = getTowerPreviewCenterOffset(previewFootprint, 'x');
+  const centerOffsetY = getTowerPreviewCenterOffset(previewFootprint, 'y');
+  const percentLeft = ((clientX - rect.left) / rect.width) * 100;
+  const percentTop = ((clientY - rect.top) / rect.height) * 100;
+  const normalizedLeft = denormalizeTowerCanvasAxisPercent(percentLeft);
+  const normalizedTop = denormalizeTowerCanvasAxisPercent(percentTop);
+  const nextCenterX = bedMinX + (normalizedLeft * bedWidth);
+  const nextCenterY = bedMinY + ((1 - normalizedTop) * bedDepth);
+  const nextX = snapTowerAnchorCoordinate(nextCenterX - centerOffsetX);
+  const nextY = snapTowerAnchorCoordinate(nextCenterY - centerOffsetY);
+  return writeTowerPositionEditorValue(editor, nextX, nextY);
+}
+
+function buildParamNumericConstraints(flatData = {}) {
+  const towerMetrics = getTowerEditorMetrics(flatData);
+  const maxTowerBody = Math.max(20, Math.floor(Math.min(towerMetrics.bedWidth, towerMetrics.bedDepth) * 0.45));
+  const maxTowerExpansion = Math.max(0, Math.floor(Math.min(towerMetrics.bedWidth, towerMetrics.bedDepth) * 0.12));
+  return {
+    'wiping.wiper_x': {
+      min: towerMetrics.safeRange.minX,
+      max: towerMetrics.safeRange.maxX,
+      integer: true
+    },
+    'wiping.wiper_y': {
+      min: towerMetrics.safeRange.minY,
+      max: towerMetrics.safeRange.maxY,
+      integer: true
+    },
+    'wiping.tower_width': {
+      min: 20,
+      max: maxTowerBody,
+      integer: false
+    },
+    'wiping.tower_depth': {
+      min: 20,
+      max: maxTowerBody,
+      integer: false
+    },
+    'wiping.tower_brim_width': {
+      min: 0,
+      max: maxTowerExpansion,
+      integer: false
+    },
+    'wiping.tower_outer_wall_width': {
+      min: 0,
+      max: maxTowerExpansion,
+      integer: false
+    },
+    'wiping.tower_outer_wall_depth': {
+      min: 0,
+      max: maxTowerExpansion,
+      integer: false
+    },
+    'wiping.tower_slanted_outer_wall_width': {
+      min: 0,
+      max: maxTowerExpansion,
+      integer: false
+    },
+    'wiping.tower_slanted_outer_wall_depth': {
+      min: 0,
+      max: maxTowerExpansion,
+      integer: false
+    }
+  };
+}
+
+function applyNumericConstraintAttributes(input, numericConstraint) {
+  if (!input || input.type !== 'number' || !numericConstraint) return;
+  input.min = String(numericConstraint.min);
+  input.max = String(numericConstraint.max);
+  input.step = numericConstraint.integer ? '1' : 'any';
+}
+
+function refreshTowerPositionDisclosureFromDom() {
+  const existingDisclosure = document.querySelector('[data-disclosure-id="tower-position"]');
+  if (!existingDisclosure) return;
+
+  const store = getActiveParamStore();
+  const flatState = collectParamFullStateFromDom(store);
+  const renderState = buildRenderableParamState(flatState);
+  activeParamNumericConstraints = buildParamNumericConstraints(renderState.flat);
+
+  const xInput = document.querySelector('.dynamic-param-input[data-json-key="wiping.wiper_x"]');
+  const yInput = document.querySelector('.dynamic-param-input[data-json-key="wiping.wiper_y"]');
+  const xConstraint = activeParamNumericConstraints['wiping.wiper_x'];
+  const yConstraint = activeParamNumericConstraints['wiping.wiper_y'];
+  const wasOpen = existingDisclosure.open;
+
+  if (xInput) {
+    applyNumericConstraintAttributes(xInput, xConstraint);
+    xInput.value = String(renderState.flat['wiping.wiper_x']);
+  }
+
+  if (yInput) {
+    applyNumericConstraintAttributes(yInput, yConstraint);
+    yInput.value = String(renderState.flat['wiping.wiper_y']);
+  }
+
+  existingDisclosure.outerHTML = renderParamDisclosureSection(buildTowerPositionDisclosure(renderState.flat));
+  const nextDisclosure = document.querySelector('[data-disclosure-id="tower-position"]');
+  if (nextDisclosure) {
+    nextDisclosure.open = wasOpen;
+  }
+  initTowerPositionEditors();
+}
+
+function normalizeTowerInputValue(input, numeric) {
+  const key = input?.getAttribute?.('data-json-key');
+  if (key !== 'wiping.wiper_x' && key !== 'wiping.wiper_y') {
+    return null;
+  }
+
+  const editor = document.querySelector('[data-tower-editor]');
+  if (!editor) {
+    return null;
+  }
+
+  const xKey = editor.dataset.towerXInput || 'wiping.wiper_x';
+  const yKey = editor.dataset.towerYInput || 'wiping.wiper_y';
+  const xInput = document.querySelector(`.dynamic-param-input[data-json-key="${CSS.escape(xKey)}"]`);
+  const yInput = document.querySelector(`.dynamic-param-input[data-json-key="${CSS.escape(yKey)}"]`);
+  const rawX = key === xKey ? numeric : (xInput?.value ?? editor.dataset.towerX ?? 0);
+  const rawY = key === yKey ? numeric : (yInput?.value ?? editor.dataset.towerY ?? 0);
+  const placement = resolveTowerEditorPlacement(editor, rawX, rawY);
+
+  if (xInput) {
+    xInput.value = String(placement.x);
+  }
+
+  if (yInput) {
+    yInput.value = String(placement.y);
+  }
+
+  editor.dataset.towerX = String(placement.x);
+  editor.dataset.towerY = String(placement.y);
+
+  return {
+    placement,
+    changed: snapTowerAnchorCoordinate(toFiniteTowerNumber(rawX) ?? 0) !== placement.x
+      || snapTowerAnchorCoordinate(toFiniteTowerNumber(rawY) ?? 0) !== placement.y
+  };
+}
+
+function normalizeNumericInputElement(input) {
+  if (!input || input.type !== 'number') return false;
+
+  const rawValue = String(input.value ?? '').trim();
+  if (!rawValue) return false;
+
+  const towerNumeric = sanitizeTowerCoordinateInputValue(rawValue);
+  const numeric = Number(rawValue);
+  if (!Number.isFinite(numeric)) return false;
+
+  const normalizedTower = normalizeTowerInputValue(input, towerNumeric ?? numeric);
+  if (normalizedTower) {
+    updateTowerPositionEditor(document.querySelector('[data-tower-editor]'));
+    return normalizedTower.changed;
+  }
+
+  const min = input.min !== '' ? Number(input.min) : Number.NEGATIVE_INFINITY;
+  const max = input.max !== '' ? Number(input.max) : Number.POSITIVE_INFINITY;
+  const nextValue = clampTowerEditorValue(numeric, min, max);
+  if (nextValue === numeric) {
+    return false;
+  }
+
+  input.value = String(roundTowerEditorCoordinate(nextValue));
+  return true;
+}
+
+function initTowerPositionEditors() {
+  document.querySelectorAll('[data-tower-editor]').forEach((editor) => {
+    if (editor.dataset.towerEditorBound === 'true') {
+      updateTowerPositionEditor(editor);
+      return;
+    }
+
+    editor.dataset.towerEditorBound = 'true';
+    const canvas = editor.querySelector('[data-tower-canvas]');
+    const handle = editor.querySelector('[data-tower-handle]');
+    const xInput = getTowerCoordinateEditorInput(editor, 'x');
+    const yInput = getTowerCoordinateEditorInput(editor, 'y');
+    if (!canvas || !handle) return;
+
+    const startDrag = (event) => {
+      if (typeof event.button === 'number' && event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const initialPlacement = updateTowerPositionFromPointer(editor, event.clientX, event.clientY);
+      if (initialPlacement) {
+        setTowerEditorFeedback(editor, initialPlacement.adjustedForDeadZone ? '\u5F53\u524D\u4F4D\u7F6E\u5728\u7981\u533A\u5185\uff0c\u5DF2\u81EA\u52A8\u79FB\u5230\u5B89\u5168\u70B9\u3002' : '');
+        showTowerDragTooltip(editor, initialPlacement);
+      }
+
+      const move = (moveEvent) => {
+        const nextPlacement = updateTowerPositionFromPointer(editor, moveEvent.clientX, moveEvent.clientY);
+        if (nextPlacement) {
+          setTowerEditorFeedback(editor, nextPlacement.adjustedForDeadZone ? '\u5F53\u524D\u4F4D\u7F6E\u5728\u7981\u533A\u5185\uff0c\u5DF2\u81EA\u52A8\u79FB\u5230\u5B89\u5168\u70B9\u3002' : '');
+          showTowerDragTooltip(editor, nextPlacement);
+        }
+      };
+      const stop = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+        hideTowerDragTooltip(editor, { immediate: true });
+      };
+
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+    };
+
+    canvas.addEventListener('pointerdown', startDrag);
+    handle.addEventListener('pointerdown', startDrag);
+
+    [xInput, yInput].forEach((input) => {
+      if (!input) return;
+
+      input.addEventListener('input', () => {
+        applyTowerCoordinateInput(editor, input.dataset.towerCoordinateInput || 'x', input.value);
+      });
+
+      input.addEventListener('blur', () => {
+        if (!String(input.value ?? '').trim()) {
+          syncTowerCoordinateDisplayField(
+            input,
+            input.dataset.towerCoordinateInput === 'y' ? editor.dataset.towerY : editor.dataset.towerX
+          );
+          setTowerEditorFeedback(editor, '');
+          return;
+        }
+        applyTowerCoordinateInput(editor, input.dataset.towerCoordinateInput || 'x', input.value);
+      });
+
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          input.blur();
+        }
+      });
+    });
+
+    updateTowerPositionEditor(editor);
+  });
 }
 
 function buildDiagnosticsDisclosure(flatData, presetPath, fileName) {
@@ -1337,6 +3091,8 @@ async function renderDynamicParamsPage() {
     : null;
   if (!preset) {
     paramEditorSession.activePath = null;
+    activeParamNumericConstraints = {};
+    renderParamsSectionNav({});
     container.innerHTML = getEmptyParamsState();
     const currentEditingFile = document.getElementById('currentEditingFile');
     if (currentEditingFile) {
@@ -1391,22 +3147,28 @@ async function renderDynamicParamsPage() {
   store.history[store.index] = activeSnapshot;
 
   const renderState = buildRenderableParamState(activeSnapshot.flat);
+  activeParamNumericConstraints = buildParamNumericConstraints(renderState.flat);
   const groups = buildParamGroupSections(renderState.flat);
+  renderParamsSectionNav(groups);
   container.innerHTML = `
     <div class="col-span-full params-shell">
       ${buildParamsSummary(unflattenObject(renderState.flat), fileName)}
       ${renderParamGroup('meta', groups.meta)}
       ${renderParamGroup('toolhead', groups.toolhead)}
-      ${renderParamGroup('wiping', groups.wiping)}
+      ${renderParamGroup('wiping', groups.wiping, { extraContent: buildWipeTowerGeometryCard(renderState.flat) })}
       ${renderParamGroup('mount', groups.mount)}
       ${renderParamGroup('unmount', groups.unmount)}
       ${renderParamGroup('advanced', groups.advanced)}
       ${renderParamDisclosureSection(buildAdvancedTemplateDisclosure(renderState.flat))}
+      ${renderParamDisclosureSection(buildTowerPositionDisclosure(renderState.flat))}
       ${renderParamDisclosureSection(buildDiagnosticsDisclosure(renderState.flat, presetPath, fileName))}
     </div>
   `;
 
   applyParamSnapshotToDom(activeSnapshot, { restoreFocus: false });
+  syncTowerAdvancedPanels(container);
+  initTowerPositionEditors();
+  initParamsSectionNav();
   updateParamDirtyState(store);
 }
 
@@ -1425,7 +3187,11 @@ function coerceParamValue(rawValue, input, key = '') {
   }
   if (value === 'true') return true;
   if (value === 'false') return false;
-  if (input?.type === 'number' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);
+  if (input?.type === 'number' && value.trim() !== '' && !Number.isNaN(Number(value))) {
+    const min = input.min !== '' ? Number(input.min) : Number.NEGATIVE_INFINITY;
+    const max = input.max !== '' ? Number(input.max) : Number.POSITIVE_INFINITY;
+    return clampTowerEditorValue(Number(value), min, max);
+  }
   if ((value.startsWith('{') || value.startsWith('[')) && value.trim()) {
     try {
       return JSON.parse(value);
@@ -1434,7 +3200,13 @@ function coerceParamValue(rawValue, input, key = '') {
   return value;
 }
 
-async function saveAllDynamicParams(options = {}) {
+async function legacySaveAllDynamicParams(options = {}) {
+  const store = getActiveParamStore();
+  if (!store?.dirty) {
+    updateParamDirtyUI(store);
+    return false;
+  }
+
   const preset = await loadActivePreset();
   if (!preset) {
     await MKPModal.alert({ title: '提示', msg: '当前未应用任何预设，无法保存。', type: 'warning' });
@@ -1460,11 +3232,13 @@ async function saveAllDynamicParams(options = {}) {
   }
 
   const saveBtn = document.getElementById('saveParamsBtn');
-  if (!saveBtn || saveBtn.dataset.isSaving === 'true') return false;
+  if (!saveBtn || saveBtn.disabled || saveBtn.dataset.isSaving === 'true') return false;
 
   saveBtn.dataset.isSaving = 'true';
   const spinIcon = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
   let resetEngine = setButtonStatus(saveBtn, '110px', '保存中', spinIcon, 'btn-expand-theme');
+
+  updateParamDirtyUI(store);
 
   const snapshot = rememberParamSnapshot({ force: true }) || collectParamSnapshotFromDom();
   const flatUpdates = applyWipingTowerParamCompatibility(snapshot.flat);
@@ -1477,6 +3251,8 @@ async function saveAllDynamicParams(options = {}) {
   if (!result.success) {
     resetEngine();
     saveBtn.dataset.isSaving = 'false';
+    updateParamDirtyUI(store);
+    window.setTimeout(() => updateParamDirtyUI(store), 340);
     await MKPModal.alert({ title: '保存失败', msg: result.error || '写入失败。', type: 'error' });
     return false;
   }
@@ -1503,7 +3279,111 @@ async function saveAllDynamicParams(options = {}) {
   setTimeout(() => {
     resetEngine();
     saveBtn.dataset.isSaving = 'false';
+    updateParamDirtyUI();
+    window.setTimeout(() => updateParamDirtyUI(), 340);
   }, 1800);
+  return true;
+}
+
+async function saveAllDynamicParams(options = {}) {
+  const store = getActiveParamStore();
+  if (!store?.dirty) {
+    updateParamDirtyUI(store);
+    return false;
+  }
+
+  const preset = await loadActivePreset();
+  if (!preset) {
+    await MKPModal.alert({
+      title: '\u63d0\u793a',
+      msg: '\u5f53\u524d\u672a\u5e94\u7528\u4efb\u4f55\u9884\u8bbe\uff0c\u65e0\u6cd5\u4fdd\u5b58\u3002',
+      type: 'warning'
+    });
+    return false;
+  }
+
+  const presetPath = typeof window.resolveParamsPresetPath === 'function'
+    ? window.resolveParamsPresetPath(window, preset.path) || preset.path
+    : preset.path;
+  const fileName = typeof window.resolveParamsDisplayFileName === 'function'
+    ? window.resolveParamsDisplayFileName(window, presetPath)
+    : presetPath.split('\\').pop();
+
+  if (!options.skipConfirm) {
+    const confirmed = await MKPModal.confirm({
+      title: '\u4fdd\u5b58\u6240\u6709\u4fee\u6539\uff1f',
+      msg: `\u5c06\u628a\u5f53\u524d\u53c2\u6570\u5199\u56de\u5230 <span class="font-mono text-xs">${escapeParamHtml(fileName)}</span>\u3002`,
+      type: 'info',
+      confirmText: '\u786e\u8ba4\u4fdd\u5b58',
+      cancelText: '\u518d\u68c0\u67e5\u4e00\u4e0b'
+    });
+    if (!confirmed) return false;
+  }
+
+  const saveBtn = document.getElementById('saveParamsBtn');
+  if (!saveBtn || saveBtn.disabled || saveBtn.dataset.isSaving === 'true') return false;
+
+  saveBtn.dataset.isSaving = 'true';
+  setParamsSaveButtonWorking(saveBtn);
+  updateParamDirtyUI(store);
+
+  const snapshot = rememberParamSnapshot({ force: true }) || collectParamSnapshotFromDom();
+  const flatUpdates = applyWipingTowerParamCompatibility(snapshot.flat);
+
+  const startTime = Date.now();
+  let result = null;
+  try {
+    result = await window.mkpAPI.overwritePreset(presetPath, unflattenObject(flatUpdates));
+  } catch (error) {
+    clearParamsSaveButtonFeedback(saveBtn);
+    delete saveBtn.dataset.isSaving;
+    updateParamDirtyUI(store);
+    await MKPModal.alert({
+      title: '\u4fdd\u5b58\u5931\u8d25',
+      msg: error?.message || '\u5199\u5165\u5931\u8d25\u3002',
+      type: 'error'
+    });
+    return false;
+  }
+
+  const elapsed = Date.now() - startTime;
+  if (elapsed < 600) await new Promise((resolve) => setTimeout(resolve, 600 - elapsed));
+
+  if (!result?.success) {
+    clearParamsSaveButtonFeedback(saveBtn);
+    delete saveBtn.dataset.isSaving;
+    updateParamDirtyUI(store);
+    await MKPModal.alert({
+      title: '\u4fdd\u5b58\u5931\u8d25',
+      msg: result?.error || '\u5199\u5165\u5931\u8d25\u3002',
+      type: 'error'
+    });
+    return false;
+  }
+
+  const nextPresetData = unflattenObject(flatUpdates);
+  if (typeof window.updatePresetCacheSnapshot === 'function') {
+    window.updatePresetCacheSnapshot(presetPath, nextPresetData);
+  } else {
+    window.presetCache = {
+      path: presetPath,
+      data: nextPresetData,
+      timestamp: Date.now()
+    };
+  }
+
+  markActiveParamSnapshotSaved(snapshot);
+
+  if (typeof window.emitActivePresetUpdated === 'function') {
+    window.emitActivePresetUpdated({ reason: 'params-save', path: presetPath, forceRefresh: false });
+  }
+  if (typeof window.broadcastPresetMutation === 'function') {
+    window.broadcastPresetMutation({ reason: 'params-save', path: presetPath });
+  }
+
+  flashParamsSaveButtonSuccess(saveBtn, 1800, () => {
+    delete saveBtn.dataset.isSaving;
+  });
   return true;
 }
 
@@ -1574,11 +3454,18 @@ async function demoRestoreDefaults() {
       };
     }
 
-    const restoredSnapshot = createParamSnapshot(flattenObject(defaultData), collectParamModesFromDom());
     const isParamsVisible = !document.getElementById('page-params')?.classList.contains('hidden');
-    pushParamSnapshotToHistory(restoredSnapshot, { markSaved: true });
-    if (isParamsVisible) {
-      applyParamSnapshotToDom(getActiveParamStore()?.history[getActiveParamStore()?.index], { restoreFocus: false });
+    const restoredState = replaceActiveParamStoreWithPersistedState(
+      presetPath,
+      flattenObject(defaultData),
+      { applyDom: isParamsVisible }
+    );
+    const restoredStore = restoredState.store;
+    const saveBtn = document.getElementById('saveParamsBtn');
+    clearParamsSaveButtonFeedback(saveBtn);
+    if (saveBtn) {
+      delete saveBtn.dataset.isSaving;
+      updateParamDirtyUI(restoredStore);
     }
 
     if (typeof window.emitActivePresetUpdated === 'function') {
@@ -1589,6 +3476,19 @@ async function demoRestoreDefaults() {
     }
     if (isParamsVisible) {
       await renderDynamicParamsPage();
+    }
+    const finalStore = getParamStore(presetPath);
+    const finalFlat = finalStore?.savedFullSerialized
+      ? JSON.parse(finalStore.savedFullSerialized)
+      : restoredState.flatState;
+    const currentFlat = isParamsVisible
+      ? collectParamFullStateFromDom(finalStore)
+      : (finalStore?.history?.[finalStore.index]?.flat || restoredState.flatState);
+    if (finalStore?.dirty) {
+      logParamDirtyMismatch('restore-defaults', finalFlat, currentFlat, {
+        presetPath,
+        fileName: restoredFileName
+      });
     }
     await MKPModal.alert({ title: '已恢复', msg: `已按${sourceLabel}恢复为 ${restoredFileName} 的初始内容。`, type: 'success' });
   } catch (error) {
@@ -1948,14 +3848,39 @@ function bindParamEditors() {
 
     const editable = event.target.closest('.dynamic-param-input[data-json-key]');
     if (editable) {
+      const key = editable.getAttribute('data-json-key');
+      if (key === 'wiping.wiper_x' || key === 'wiping.wiper_y') {
+        syncTowerPositionEditorsFromInputs();
+      } else if (isTowerGeometryField(key)) {
+        refreshTowerPositionDisclosureFromDom();
+      }
       rememberParamSnapshot();
     }
   });
 
   document.addEventListener('change', (event) => {
+    const editable = event.target.closest('.dynamic-param-input[data-json-key]');
+    if (editable?.type === 'number') {
+      const key = editable.getAttribute('data-json-key');
+      const normalized = normalizeNumericInputElement(editable);
+      if (key === 'wiping.wiper_x' || key === 'wiping.wiper_y') {
+        syncTowerPositionEditorsFromInputs();
+      } else if (isTowerGeometryField(key)) {
+        refreshTowerPositionDisclosureFromDom();
+      }
+      if (normalized) {
+        rememberParamSnapshot({ force: true });
+      }
+      updateParamDirtyState();
+    }
+
     const checkbox = event.target.closest('.dynamic-param-input[type="checkbox"]');
     const status = checkbox?.closest('.param-row-toggle')?.querySelector('.param-switch-status');
     if (status) status.textContent = checkbox.checked ? '已开启' : '已关闭';
+    if (checkbox?.dataset?.towerAdvancedToggle) {
+      refreshTowerPositionDisclosureFromDom();
+      syncTowerAdvancedPanels(document);
+    }
     if (checkbox) updateParamDirtyState();
   });
 }
@@ -1971,4 +3896,6 @@ window.saveAllDynamicParams = saveAllDynamicParams;
 window.demoRestoreDefaults = demoRestoreDefaults;
 window.toggleGcodeMode = toggleGcodeMode;
 window.canNavigateAwayFromParams = canNavigateAwayFromParams;
+window.scrollToParamsSection = scrollToParamsSection;
 window.hasUnsavedParamChanges = hasUnsavedParamChanges;
+window.__syncParamsSaveButtonState = () => updateParamDirtyUI();

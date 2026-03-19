@@ -20,7 +20,7 @@ const {
 } = require('../../../src/main/mkp_engine');
 
 describe('mkp main-process engine', () => {
-  it('parses either JSON or TOML CLI config arguments for post-processing mode', () => {
+  it('parses JSON CLI config arguments for post-processing mode and rejects TOML shortcuts', () => {
     expect(
       parseCliArguments(['electron', 'main.js', '--Json', 'preset.json', '--Gcode', 'part.gcode'])
     ).toEqual({
@@ -29,13 +29,13 @@ describe('mkp main-process engine', () => {
       gcodePath: 'part.gcode'
     });
 
-    expect(
+    expect(() =>
       parseCliArguments(['electron', 'main.js', '--Toml', 'preset.toml', '--Gcode', 'part.gcode'])
-    ).toEqual({
-      configFormat: 'toml',
-      configPath: 'preset.toml',
-      gcodePath: 'part.gcode'
-    });
+    ).toThrow(/no longer supports --Toml/i);
+
+    expect(() =>
+      parseCliArguments(['electron', 'main.js', '--Json', 'preset.json', '--Toml', 'preset.toml', '--Gcode', 'part.gcode'])
+    ).toThrow(/no longer supports --Toml/i);
   });
 
   it('normalizes TOML presets into the engine config shape used by JS post-processing', () => {
@@ -96,8 +96,10 @@ ironing_path_offset_mm = -0.15
     expect(config.templates.wipingGcode.length).toBeGreaterThan(0);
     expect(config.templates.towerBaseLayerGcode.length).toBeGreaterThan(0);
     expect(config.postProcessing).toEqual({
+      futureLollipopMode: false,
       ironExtrudeRatio: 0.85,
       ironingPathOffsetMm: -0.15,
+      legacyWallBufferRecovery: false,
       towerExtrudeRatio: 1.1
     });
   });
@@ -113,6 +115,39 @@ ironing_path_offset_mm = -0.15
     );
 
     expect(config.wiping.switchTowerType).toBe(1);
+  });
+
+  it('normalizes advanced wipe tower geometry fields so renderer preview and CLI generation share one runtime contract', () => {
+    const config = parseConfigText(
+      JSON.stringify({
+        wiping: {
+          tower_width: 26,
+          tower_depth: 24,
+          tower_brim_width: 2,
+          tower_outer_wall_width: 1.5,
+          tower_outer_wall_depth: 1,
+          tower_slanted_outer_wall_enabled: true,
+          tower_slanted_outer_wall_width: 2.5,
+          tower_slanted_outer_wall_depth: 3
+        }
+      }),
+      'json'
+    );
+
+    expect(config.wiping.towerGeometry).toEqual({
+      baseDepth: 36,
+      baseWidth: 34,
+      brimWidth: 2,
+      coreDepth: 24,
+      coreWidth: 26,
+      layerDepth: 32,
+      layerWidth: 30,
+      outerWallDepth: 1,
+      outerWallWidth: 1.5,
+      slantedOuterWallDepth: 3,
+      slantedOuterWallEnabled: true,
+      slantedOuterWallWidth: 2.5
+    });
   });
 
   it('defaults legacy presets to wiping-tower mode unless a new explicit tower toggle disables it', () => {
@@ -137,7 +172,196 @@ ironing_path_offset_mm = -0.15
       'json'
     );
 
-    expect(explicitOffConfig.wiping.haveWipingComponents).toBe(false);
+    expect(explicitOffConfig.wiping.haveWipingComponents).toBe(true);
+  });
+
+  it('keeps public parsed presets on tower-only mode in the runtime report even if legacy fields request non-tower or fast-line values', () => {
+    const parsedConfig = parseConfigText(
+      JSON.stringify({
+        wiping: {
+          have_wiping_components: false,
+          use_wiping_towers: false,
+          switch_tower_type: 2
+        }
+      }),
+      'json'
+    );
+
+    const detailed = processGcodeContentDetailed(
+      [
+        '; Z_HEIGHT: 0.60',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500',
+        '; FEATURE: Outer wall'
+      ].join('\n'),
+      parsedConfig
+    );
+
+    expect(parsedConfig.wiping.haveWipingComponents).toBe(true);
+    expect(parsedConfig.wiping.switchTowerType).toBe(2);
+    expect(detailed.report.configSnapshot.effectiveSwitchTowerType).toBe(1);
+    expect(detailed.report.steps.some((step: any) => String(step.technical || '').includes('haveWipingComponents=true'))).toBe(true);
+    expect(detailed.report.steps.some((step: any) => String(step.technical || '').includes('effectiveSwitchTowerType=1'))).toBe(true);
+  });
+
+  it('clamps wipe-tower coordinates against the full tower footprint instead of trusting the raw anchor point', () => {
+    const config = parseConfigText(
+      JSON.stringify({
+        wiping: {
+          wiper_x: -20,
+          wiper_y: 300
+        },
+        machine: {
+          bounds: {
+            minX: 0,
+            maxX: 256,
+            minY: 0,
+            maxY: 256
+          }
+        }
+      }),
+      'json'
+    );
+
+    expect(config.wiping.wiperX).toBe(5);
+    expect(config.wiping.wiperY).toBe(228);
+  });
+
+  it('snaps wipe-tower coordinates to integer anchors before later dead-zone handling', () => {
+    const config = parseConfigText(
+      JSON.stringify({
+        machine: {
+          bounds: {
+            minX: 0,
+            maxX: 180,
+            minY: 0,
+            maxY: 180
+          }
+        },
+        wiping: {
+          wiper_x: 17.6,
+          wiper_y: 42.4
+        }
+      }),
+      'json'
+    );
+
+    expect(config.wiping.wiperX).toBe(18);
+    expect(config.wiping.wiperY).toBe(42);
+  });
+
+  it('records the effective wipe-tower coordinates when a raw preset position is clamped', () => {
+    const parsedConfig = parseConfigText(
+      JSON.stringify({
+        wiping: {
+          wiper_x: -20,
+          wiper_y: 300
+        },
+        machine: {
+          bounds: {
+            minX: 0,
+            maxX: 256,
+            minY: 0,
+            maxY: 256
+          }
+        }
+      }),
+      'json'
+    );
+
+    const detailed = processGcodeContentDetailed(
+      [
+        '; Z_HEIGHT: 0.60',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500',
+        '; FEATURE: Outer wall'
+      ].join('\n'),
+      parsedConfig
+    );
+
+    expect(detailed.report.configSnapshot.wiperX).toBe(5);
+    expect(detailed.report.configSnapshot.wiperY).toBe(228);
+    expect(detailed.report.configSnapshot.towerPositionAdjusted).toBe(true);
+    expect(
+      detailed.report.steps.some((step: any) => /towerPlacement raw=\(-20(?:\.0)?,300(?:\.0)?\) effective=\(5(?:\.0)?,228(?:\.0)?\)/.test(String(step.technical || '')))
+    ).toBe(true);
+  });
+
+  it('applies the P1/X1 MKP safety range and official L-shaped dead zones before accepting tower coordinates', () => {
+    const config = parseConfigText(
+      JSON.stringify({
+        printer: 'p1',
+        wiping: {
+          wiper_x: 10,
+          wiper_y: 10
+        }
+      }),
+      'json'
+    );
+
+    expect(config.machine.printerId).toBe('p1');
+    expect(config.machine.bounds).toEqual({
+      minX: 0,
+      maxX: 256,
+      minY: 0,
+      maxY: 256
+    });
+    expect(config.wiping.wiperX).toBe(42);
+    expect(config.wiping.wiperY).toBe(13);
+    expect(config.machine.wipingTowerPosition.adjusted).toBe(true);
+    expect(config.machine.wipingTowerPosition.blockedZoneIds).toEqual([
+      'mkp-safety',
+      'official-front-strip'
+    ]);
+  });
+
+  it('treats the P1/X1 official front purge line as a thin front L-zone instead of a tall left-side strip', () => {
+    const config = parseConfigText(
+      JSON.stringify({
+        printer: 'x1',
+        wiping: {
+          wiper_x: 220,
+          wiper_y: 10
+        }
+      }),
+      'json'
+    );
+
+    expect(config.wiping.wiperX).toBe(220);
+    expect(config.wiping.wiperY).toBe(13);
+    expect(config.machine.wipingTowerPosition.adjusted).toBe(true);
+    expect(config.machine.wipingTowerPosition.blockedZoneIds).toEqual(['official-front-strip']);
+  });
+
+  it('records blocked-zone adjustments in the runtime report when a P1/X1 tower anchor lands inside a forbidden area', () => {
+    const parsedConfig = parseConfigText(
+      JSON.stringify({
+        printer: 'x1',
+        wiping: {
+          wiper_x: 220,
+          wiper_y: 10
+        }
+      }),
+      'json'
+    );
+
+    const detailed = processGcodeContentDetailed(
+      [
+        '; Z_HEIGHT: 0.60',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500',
+        '; FEATURE: Outer wall'
+      ].join('\n'),
+      parsedConfig
+    );
+
+    expect(detailed.report.configSnapshot.towerPositionAdjusted).toBe(true);
+    expect(
+      detailed.report.steps.some((step: any) => String(step.technical || '').includes('blockedZones=official-front-strip'))
+    ).toBe(true);
+    expect(
+      detailed.report.steps.some((step: any) => String(step.human || '').includes('forbidden placement area'))
+    ).toBe(true);
   });
 
   it('upgrades legacy minimal tower templates embedded in old JSON presets to the full Python defaults', () => {
@@ -235,11 +459,83 @@ ironing_path_offset_mm = -0.15
       }
     );
 
-    expect(result).toContain('; ===== MKP Support Electron Glueing Start =====');
+    expect(result).toContain(';Pre-glue preparation');
     expect(result).toContain('M400\nT1');
     expect(result).toContain('G1 X1.900 Y12.000');
     expect(result).toContain('T0');
-    expect(result).toContain('; ===== MKP Support Electron Glueing End =====');
+    expect(result).not.toContain('; ===== MKP Support Electron Glueing Start =====');
+    expect(result).not.toContain('; ===== MKP Support Electron Glueing End =====');
+  });
+
+  it('adds Python-style mount and glue-start markers around each injected glue cycle', () => {
+    const result = processGcodeContent(
+      [
+        '; Z_HEIGHT: 0.60',
+        'G1 X5 Y5 F12000',
+        '; FEATURE: Support interface',
+        'G1 X.9 Y10 E.500 F1200',
+        '; FEATURE: Outer wall'
+      ].join('\n'),
+      {
+        toolhead: {
+          customMountGcode: 'M400\nT1',
+          customUnmountGcode: 'T0',
+          offset: { x: 1, y: 2, z: 0.3 },
+          speedLimit: 69
+        },
+        wiping: {
+          supportExtrusionMultiplier: 1
+        }
+      }
+    );
+
+    const mountingIndex = result.indexOf(';Mounting Toolhead');
+    const mountedIndex = result.indexOf(';Toolhead Mounted');
+    const glueStartIndex = result.indexOf(';Glueing Started');
+    const inPositionIndex = result.indexOf(';Inposition');
+    const firstGlueMoveIndex = result.indexOf('G1 X1.900 Y12.000');
+
+    expect(mountingIndex).toBeGreaterThanOrEqual(0);
+    expect(mountedIndex).toBeGreaterThan(mountingIndex);
+    expect(glueStartIndex).toBeGreaterThan(mountedIndex);
+    expect(inPositionIndex).toBeGreaterThan(glueStartIndex);
+    expect(firstGlueMoveIndex).toBeGreaterThan(inPositionIndex);
+  });
+
+  it('matches the 5.8.5 pre-glue envelope by emitting legacy comments and omitting JS-only block wrappers', () => {
+    const result = processGcodeContent(
+      [
+        '; travel_speed = 700',
+        '; Z_HEIGHT: 0.20',
+        '; LAYER_HEIGHT: 0.20',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500',
+        '; FEATURE: Outer wall',
+        '; Z_HEIGHT: 0.40',
+        '; LAYER_HEIGHT: 0.20',
+        '; layer num/total_layer_count: 2/33'
+      ].join('\n'),
+      {
+        toolhead: {
+          customMountGcode: 'M400',
+          customUnmountGcode: 'M401',
+          offset: { x: 0, y: 0, z: 0.3 },
+          speedLimit: 70
+        }
+      }
+    );
+
+    const thicknessIndex = result.indexOf('; Current Layer Thickness:0.2');
+    const preGlueIndex = result.indexOf(';Pre-glue preparation');
+    const risingIndex = result.indexOf(';Rising Nozzle a little');
+    const mountingIndex = result.indexOf(';Mounting Toolhead');
+
+    expect(thicknessIndex).toBeGreaterThanOrEqual(0);
+    expect(preGlueIndex).toBeGreaterThan(thicknessIndex);
+    expect(risingIndex).toBeGreaterThan(preGlueIndex);
+    expect(mountingIndex).toBeGreaterThan(risingIndex);
+    expect(result).not.toContain('; ===== MKP Support Electron Glueing Start =====');
+    expect(result).not.toContain('; ===== MKP Support Electron Glueing End =====');
   });
 
   it('does not duplicate header-like print sections inside the pure JS engine path', () => {
@@ -294,7 +590,7 @@ ironing_path_offset_mm = -0.15
       }
     );
 
-    expect((result.match(/^; ===== MKP Support Electron Glueing Start =====$/gm) || []).length).toBe(1);
+    expect((result.match(/^;Mounting Toolhead$/gm) || []).length).toBe(1);
   });
 
   it('defers support-interface glue injection until the layer-num boundary, matching the Python flow', () => {
@@ -317,7 +613,7 @@ ironing_path_offset_mm = -0.15
       }
     );
 
-    const glueStartIndex = result.indexOf('; ===== MKP Support Electron Glueing Start =====');
+    const glueStartIndex = result.indexOf(';Pre-glue preparation');
     const outerWallMoveIndex = result.indexOf('G1 X50 Y50 E.200');
     const layerBoundaryIndex = result.indexOf('; layer num/total_layer_count: 2/33');
 
@@ -348,9 +644,10 @@ ironing_path_offset_mm = -0.15
       }
     );
 
-    expect(result).toContain('; ===== MKP Support Electron Glueing Start =====');
+    expect(result).toContain(';Pre-glue preparation');
     expect(result).toContain('G1 X1.900 Y12.000');
-    expect(result).toContain('; ===== MKP Support Electron Glueing End =====');
+    expect(result).not.toContain('; ===== MKP Support Electron Glueing Start =====');
+    expect(result).not.toContain('; ===== MKP Support Electron Glueing End =====');
   });
 
   it('does not treat top-surface ironing as a glue target when Orca emits line-width metadata for a normal-height layer', () => {
@@ -527,7 +824,7 @@ ironing_path_offset_mm = -0.15
       }
     );
 
-    expect(result.outputGcode).toContain('; ===== MKP Support Electron Glueing Start =====');
+    expect(result.outputGcode).toContain(';Pre-glue preparation');
     expect(result.report.summary.injectedSegments).toBe(1);
     expect(result.report.runtime.engineRevision).toBe(getEngineRuntimeMetadata().engineRevision);
     expect(result.report.steps.some((step: any) => step.title.includes('支撑面'))).toBe(true);
@@ -639,6 +936,39 @@ ironing_path_offset_mm = -0.15
     expect(lines.some((line: string) => line.includes('data={"inputPath":"D:\\\\print\\\\part.gcode"'))).toBe(true);
   });
 
+  it('includes tower-position clamp steps in compact CLI logs when the raw preset position is corrected', () => {
+    const detailed = processGcodeContentDetailed(
+      [
+        '; Z_HEIGHT: 0.60',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500 F1200',
+        '; FEATURE: Outer wall'
+      ].join('\n'),
+      parseConfigText(
+        JSON.stringify({
+          wiping: {
+            wiper_x: -20,
+            wiper_y: 300
+          },
+          machine: {
+            bounds: {
+              minX: 0,
+              maxX: 256,
+              minY: 0,
+              maxY: 256
+            }
+          }
+        }),
+        'json'
+      )
+    );
+
+    const lines = buildPostprocessStepLogLines(detailed.report);
+
+    expect(lines.some((line: string) => line.includes('title=Clamp wipe tower position'))).toBe(true);
+    expect(lines.some((line: string) => line.includes('towerPlacement raw=(-20.0,300.0) effective=(5.0,228.0)'))).toBe(true);
+  });
+
   it('replays AUTO fan placeholders and restores nozzle temperature with dry time after glueing', () => {
     const result = processGcodeContent(
       [
@@ -674,6 +1004,53 @@ ironing_path_offset_mm = -0.15
     expect(result).toContain('M104 S220');
     expect(result).toContain(';User Dry Time Activated');
     expect(result).toContain('G4 P8000');
+  });
+
+  it('matches the 5.8.5 non-tower flow by rebuilding pressure from sparse or solid infill before resuming model print', () => {
+    const result = processGcodeContent(
+      [
+        '; travel_speed = 700',
+        '; Z_HEIGHT: 0.20',
+        '; LAYER_HEIGHT: 0.20',
+        '; FEATURE: Outer wall',
+        'G1 X5 Y5 E.100',
+        '; Z_HEIGHT: 0.40',
+        '; LAYER_HEIGHT: 0.20',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500',
+        '; FEATURE: Outer wall',
+        'G1 X11 Y11 E.200',
+        '; FEATURE: Internal solid infill',
+        'G1 X60 Y60 E.700',
+        'G1 X61 Y61 E.400',
+        '; layer num/total_layer_count: 2/33'
+      ].join('\n'),
+      {
+        toolhead: {
+          customMountGcode: 'M400',
+          customUnmountGcode: 'M401',
+          offset: { x: 0, y: 0, z: 0.3 },
+          speedLimit: 69
+        },
+        wiping: {
+          supportExtrusionMultiplier: 1,
+          useWipingTowers: false
+        }
+      }
+    );
+
+    const infillRecoveryStart = result.indexOf(';Print sparse/solid infill first');
+    const resumePrintHeight = result.indexOf('G1 Z0.400 ; resume print height');
+    const recoverySegment = result.slice(infillRecoveryStart, resumePrintHeight);
+
+    expect(infillRecoveryStart).toBeGreaterThanOrEqual(0);
+    expect(resumePrintHeight).toBeGreaterThan(infillRecoveryStart);
+    expect(recoverySegment).toContain('G1 F42000');
+    expect(recoverySegment).toContain('G1 X60 Y60');
+    expect(recoverySegment).not.toContain('G1 X60 Y60 E.700');
+    expect(recoverySegment).toContain('G1 Z0.300');
+    expect(recoverySegment).toContain('G1 F600');
+    expect(recoverySegment).toContain('G1 X61 Y61 E.400');
   });
 
   it('prepares the next wiping tower without inlining the tower shell inside the first-pass glue block', () => {
@@ -724,7 +1101,7 @@ ironing_path_offset_mm = -0.15
     expect(result).not.toContain('resume print height');
   });
 
-  it('uses full configured tower speed in post-glue recovery when fast-line lollipop mode is enabled', () => {
+  it('keeps slow-line tower recovery active by default even if a future fast-line tower value is present', () => {
     const result = processGcodeContent(
       [
         '; nozzle_temperature = 220',
@@ -752,6 +1129,52 @@ ironing_path_offset_mm = -0.15
           wipeTowerPrintSpeed: 42,
           wiperX: 30,
           wiperY: 40
+        },
+        templates: {
+          wipingGcode: [
+            'G1 F9600',
+            'G1 X20 Y20 E.25658'
+          ]
+        }
+      }
+    );
+
+    expect(result).toContain('; FEATURE: Inner wall');
+    expect(result).toContain('G1 F2100');
+    expect(result).not.toContain('G1 F2520');
+  });
+
+  it('keeps a future fast-line tower interface behind an explicit opt-in flag', () => {
+    const result = processGcodeContent(
+      [
+        '; nozzle_temperature = 220',
+        '; LAYER_HEIGHT: 0.20',
+        '; Z_HEIGHT: 0.60',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500',
+        '; FEATURE: Outer wall',
+        '; Z_HEIGHT: 0.80',
+        '; LAYER_HEIGHT: 0.20',
+        '; layer num/total_layer_count: 2/33',
+        '; update layer progress'
+      ].join('\n'),
+      {
+        toolhead: {
+          customMountGcode: 'M400',
+          customUnmountGcode: 'M401',
+          offset: { x: 0, y: 0, z: 0.3 },
+          speedLimit: 69
+        },
+        wiping: {
+          supportExtrusionMultiplier: 1,
+          useWipingTowers: true,
+          switchTowerType: 2,
+          wipeTowerPrintSpeed: 42,
+          wiperX: 30,
+          wiperY: 40
+        },
+        postProcessing: {
+          futureLollipopMode: true
         },
         templates: {
           wipingGcode: [
@@ -908,13 +1331,101 @@ ironing_path_offset_mm = -0.15
     ]);
   });
 
-  it('builds fast-line follow-up tower layers without the slow-line speed cap', () => {
+  it('expands tower base and layer coordinates from the shared advanced geometry contract when the tower shell is enlarged', () => {
+    const base = buildTowerBaseLayerGcode({
+      firstLayerHeight: 0.28,
+      firstLayerSpeed: 20,
+      retractLength: 0.8,
+      towerBaseLayerGcode: [
+        'G1 X10 Y10 E.10000',
+        'G1 X30 Y30 E.10000'
+      ],
+      towerGeometry: {
+        coreWidth: 20,
+        coreDepth: 20,
+        brimWidth: 3,
+        outerWallWidth: 1,
+        outerWallDepth: 2,
+        slantedOuterWallEnabled: true,
+        slantedOuterWallWidth: 2,
+        slantedOuterWallDepth: 1,
+        layerWidth: 26,
+        layerDepth: 26,
+        baseWidth: 32,
+        baseDepth: 34
+      },
+      travelSpeed: 150,
+      wiperX: 30,
+      wiperY: 40
+    });
+
+    const layer = buildWipingTowerLayerGcode({
+      currentLayerHeight: 0.8,
+      localLayerThickness: 0.2,
+      nozzleDiameter: 0.4,
+      retractLength: 0.8,
+      suggestedLayerHeight: 0.13,
+      switchTowerType: 1,
+      towerHeight: 0.65,
+      travelSpeed: 150,
+      wipeTowerPrintSpeed: 42,
+      wipingGcode: [
+        'G1 F9600',
+        'G1 X10.602 Y29.398 E.60441'
+      ],
+      towerGeometry: {
+        coreWidth: 20,
+        coreDepth: 20,
+        brimWidth: 3,
+        outerWallWidth: 1,
+        outerWallDepth: 2,
+        slantedOuterWallEnabled: true,
+        slantedOuterWallWidth: 2,
+        slantedOuterWallDepth: 1,
+        layerWidth: 26,
+        layerDepth: 26,
+        baseWidth: 32,
+        baseDepth: 34
+      },
+      wiperX: 30,
+      wiperY: 40
+    });
+
+    expect(base).toContain('G1 X29.000 Y38.000 E0.160');
+    expect(base).toContain('G1 X61.000 Y72.000 E0.160');
+    expect(layer).toContain('G1 X31.782 Y73.218 E0.786');
+  });
+
+  it('defaults direct tower-layer generation back to slow-line speed until fast-line is explicitly enabled', () => {
     const result = buildWipingTowerLayerGcode({
       currentLayerHeight: 0.8,
       nozzleDiameter: 0.4,
       retractLength: 0.8,
       suggestedLayerHeight: 0.13,
       switchTowerType: 2,
+      towerHeight: 0.65,
+      travelSpeed: 150,
+      wipeTowerPrintSpeed: 42,
+      wipingGcode: [
+        'G1 F9600',
+        'G1 X20 Y20 E.25658'
+      ],
+      wiperX: 30,
+      wiperY: 40
+    });
+
+    expect(result).toContain('G1 F2100');
+    expect(result).not.toContain('G1 F2520');
+  });
+
+  it('builds fast-line follow-up tower layers only when the future lollipop flag is enabled', () => {
+    const result = buildWipingTowerLayerGcode({
+      currentLayerHeight: 0.8,
+      nozzleDiameter: 0.4,
+      retractLength: 0.8,
+      suggestedLayerHeight: 0.13,
+      switchTowerType: 2,
+      futureLollipopMode: true,
       towerHeight: 0.65,
       travelSpeed: 150,
       wipeTowerPrintSpeed: 42,
@@ -1116,13 +1627,107 @@ ironing_path_offset_mm = -0.15
     );
 
     const prepareIndex = result.indexOf(';Prepare for next tower');
-    const glueEndIndex = result.indexOf('; ===== MKP Support Electron Glueing End =====', prepareIndex);
-    const towerTravelSegment = result.slice(prepareIndex, glueEndIndex);
+    const layerBoundaryIndex = result.indexOf('; layer num/total_layer_count', prepareIndex);
+    const towerTravelSegment = result.slice(prepareIndex, layerBoundaryIndex);
 
     expect(prepareIndex).toBeGreaterThanOrEqual(0);
-    expect(glueEndIndex).toBeGreaterThan(prepareIndex);
+    expect(layerBoundaryIndex).toBeGreaterThan(prepareIndex);
     expect(towerTravelSegment).not.toMatch(/G1\s+X[^\n]*\sE[^\n]*/);
     expect(towerTravelSegment).not.toMatch(/G1\s+Y[^\n]*\sE[^\n]*/);
+  });
+
+  it('matches Python by stripping expanded head_wrap_detect blocks while preserving the closing SKIPPABLE_END marker', () => {
+    const result = applyPostProcessingPasses(
+      [
+        '; CHANGE_LAYER',
+        '; Z_HEIGHT: 0.40',
+        '; LAYER_HEIGHT: 0.20',
+        '; SKIPTYPE: head_wrap_detect',
+        'M622.1 S1',
+        'M1002 judge_flag g39_detection_flag',
+        'G39.3 S1',
+        '; SKIPPABLE_END',
+        '; FEATURE: Outer wall',
+        'G1 X10 Y10 E.200'
+      ].join('\n'),
+      {
+        postProcessing: {
+          legacyWallBufferRecovery: true
+        },
+        wiping: {
+          haveWipingComponents: true,
+          supportExtrusionMultiplier: 1
+        }
+      }
+    );
+
+    expect(result).not.toContain('; SKIPTYPE: head_wrap_detect');
+    expect(result).not.toContain('M1002 judge_flag g39_detection_flag');
+    expect(result).not.toContain('G39.3 S1');
+    expect((result.match(/; SKIPPABLE_END/g) || []).length).toBe(1);
+    expect(result).toContain('; FEATURE: Outer wall');
+  });
+
+  it('matches Python by keeping the first recovery G3 Z move after tower replay, then removing the next one on later tower replays', () => {
+    const result = processGcodeContent(
+      [
+        '; initial_layer_print_height = 0.2',
+        '; retraction_length = 0.8',
+        '; travel_speed = 700',
+        '; LAYER_HEIGHT: 0.20',
+        '; Z_HEIGHT: 0.20',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500',
+        '; FEATURE: Outer wall',
+        '; Z_HEIGHT: 0.40',
+        '; LAYER_HEIGHT: 0.20',
+        '; layer num/total_layer_count: 2/33',
+        '; update layer progress',
+        'G17',
+        'G3 Z.8 I-.782 J.932 P1 F42000',
+        'G1 X90 Y101.81 Z.8',
+        'G1 Z.4',
+        '; FEATURE: Support interface',
+        'G1 X12 Y12 E.500',
+        '; FEATURE: Outer wall',
+        '; Z_HEIGHT: 0.60',
+        '; LAYER_HEIGHT: 0.20',
+        '; layer num/total_layer_count: 3/33',
+        '; update layer progress',
+        'G17',
+        'G1 X95.754 Y107.564 Z.8',
+        'G3 Z.8 I-.097 J1.213 P1 F42000',
+        'G1 X78.322 Y92.631 Z.8',
+        'G1 Z.4'
+      ].join('\n'),
+      {
+        toolhead: {
+          customMountGcode: 'M400',
+          customUnmountGcode: 'M401',
+          offset: { x: 0, y: 0, z: 0.3 },
+          speedLimit: 70
+        },
+        wiping: {
+          haveWipingComponents: true,
+          supportExtrusionMultiplier: 1,
+          switchTowerType: 1,
+          wipeTowerPrintSpeed: 42,
+          wiperX: 20,
+          wiperY: 20
+        },
+        machine: {
+          nozzleDiameter: 0.4
+        }
+      }
+    );
+
+    expect(result).toContain(';Tower_Layer_Gcode');
+    expect(result).toContain('G3 Z.8 I-.782 J.932 P1 F42000');
+    expect(result).not.toContain('G3 Z.8 I-.097 J1.213 P1 F42000');
+    expect(result).toContain('G1 X90 Y101.81 Z.8');
+    expect(result).toContain('G1 X95.754 Y107.564 Z.8');
+    expect(result).toContain('G1 X78.322 Y92.631 Z.8');
+    expect(result).toContain('G1 Z.4');
   });
 
   it('restores AUTO fan placeholders to zero when the last raw-layer fan speed is zero', () => {
@@ -1340,8 +1945,18 @@ ironing_path_offset_mm = -0.15
       }
     );
 
-    expect(result).toContain('G1 Z7.000\nG1 F42000\nG1 X78.022 Y110.731\nG1 Z4.000');
-    expect(result).not.toContain('G1 Z7.000\nG1 F42000\nG1 X99.700 Y118.100');
+    const hoverIndex = result.indexOf('G1 Z7.000');
+    const glueStartIndex = result.indexOf(';Glueing Started');
+    const inPositionIndex = result.indexOf(';Inposition');
+    const feedIndex = result.indexOf('G1 F42000', inPositionIndex);
+    const lockedTravelIndex = result.indexOf('G1 X78.022 Y110.731');
+
+    expect(hoverIndex).toBeGreaterThanOrEqual(0);
+    expect(glueStartIndex).toBeGreaterThan(hoverIndex);
+    expect(inPositionIndex).toBeGreaterThan(glueStartIndex);
+    expect(feedIndex).toBeGreaterThan(inPositionIndex);
+    expect(lockedTravelIndex).toBeGreaterThan(feedIndex);
+    expect(result).not.toContain('G1 X99.700 Y118.100');
   });
 
   it('does not replay trailing slicer travel moves from a support interface as glue motion', () => {
@@ -1613,5 +2228,78 @@ ironing_path_offset_mm = -0.15
     expect(result).toContain('G1 Z0.200;Tower Z');
     expect(result).toContain('G1 F3000');
     expect(result).toContain('G1 X21.860 Y21.860');
+  });
+
+  it('replays the old delayed-wall behavior by moving a wall block behind internal solid infill after a support-interface layer', () => {
+    const result = applyPostProcessingPasses(
+      [
+        '; initial_layer_print_height = 0.2',
+        '; travel_speed = 700',
+        '; Z_HEIGHT: 0.4',
+        '; LAYER_HEIGHT: 0.2',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500',
+        '; FEATURE: Outer wall',
+        'G1 X11 Y11 E.200',
+        '; WIPE_START',
+        'G1 X10 Y10 E-.76',
+        '; WIPE_END',
+        'G1 E-.04 F1800',
+        'M204 S10000',
+        'G17',
+        'G3 Z.8 I-.116 J-1.211 P1  F42000',
+        'G1 X77.405 Y88.96 Z.8',
+        'G1 Z.4',
+        'G1 E.8 F1800',
+        '; FEATURE: Inner wall',
+        'G1 X77.722 Y89.113 E.01167',
+        '; FEATURE: Outer wall',
+        'G1 X77.214 Y88.432 E.0067',
+        '; WIPE_START',
+        'G1 X77.214 Y88.432 E-.07698',
+        '; WIPE_END',
+        'G1 E-.04 F1800',
+        'G1 X78.395 Y89.937 F42000',
+        'G1 Z.4',
+        'G1 E.8 F1800',
+        '; FEATURE: Internal solid infill',
+        'G1 X77.806 Y89.617 E.02162',
+        '; CHANGE_LAYER',
+        '; Z_HEIGHT: 0.6',
+        '; LAYER_HEIGHT: 0.2',
+        '; WIPE_START',
+        'G1 X77.807 Y90.303 E-.24192',
+        '; WIPE_END',
+        'G1 E-.04 F1800',
+        '; layer num/total_layer_count: 3/33'
+      ].join('\n'),
+      {
+        postProcessing: {
+          legacyWallBufferRecovery: true
+        },
+        wiping: {
+          haveWipingComponents: true,
+          supportExtrusionMultiplier: 1
+        }
+      }
+    );
+
+    const wallsAheadIndex = result.indexOf(';Walls Ahead!');
+    const differentExtrusionIndex = result.indexOf(';Different Extrusion!');
+    const internalSolidIndex = result.indexOf('; FEATURE: Internal solid infill');
+    const wallsReleasedIndex = result.indexOf(';Walls Released');
+    const delayedWallTravelIndex = result.indexOf('G1 X77.405 Y88.96 Z.8');
+    const layerBoundaryIndex = result.indexOf('; layer num/total_layer_count: 3/33');
+
+    expect(wallsAheadIndex).toBeGreaterThanOrEqual(0);
+    expect(differentExtrusionIndex).toBeGreaterThan(wallsAheadIndex);
+    expect(internalSolidIndex).toBeGreaterThan(differentExtrusionIndex);
+    expect(wallsReleasedIndex).toBeGreaterThan(internalSolidIndex);
+    expect(delayedWallTravelIndex).toBeGreaterThan(wallsReleasedIndex);
+    expect(layerBoundaryIndex).toBeGreaterThan(delayedWallTravelIndex);
+    expect(result).toContain('G1 F42000.0;Wall Move Command');
+
+    const prefixBeforeInternal = result.slice(0, internalSolidIndex);
+    expect(prefixBeforeInternal).not.toContain('G1 X77.405 Y88.96 Z.8');
   });
 });

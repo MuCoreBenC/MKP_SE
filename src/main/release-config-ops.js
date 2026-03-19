@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const {
+  decodeAndValidateImageDataUrl
+} = require('./file_guards');
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -157,14 +160,6 @@ function saveDefaultCatalogConfig(payload, options = {}) {
   return readDefaultCatalogConfig(options);
 }
 
-function dataUrlToBuffer(dataUrl) {
-  const match = String(dataUrl || '').match(/^data:(.+?);base64,(.+)$/);
-  if (!match) {
-    throw new Error('Invalid image payload.');
-  }
-  return Buffer.from(match[2], 'base64');
-}
-
 async function importDefaultCatalogImage(payload, options = {}) {
   const paths = resolveRuntimePaths(options);
   ensureDir(paths.imagesDir);
@@ -172,7 +167,9 @@ async function importDefaultCatalogImage(payload, options = {}) {
   const baseName = sanitizeToken(payload?.fileBaseName || payload?.itemId || payload?.itemType || 'catalog');
   const outputName = `${baseName}_${Date.now()}.webp`;
   const outputPath = path.join(paths.imagesDir, outputName);
-  const buffer = dataUrlToBuffer(payload?.dataUrl);
+  const { buffer } = decodeAndValidateImageDataUrl(payload?.dataUrl, {
+    label: 'Release config image'
+  });
 
   await sharp(buffer)
     .resize(512, 512, {

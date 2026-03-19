@@ -16,7 +16,9 @@
         document.documentElement.setAttribute('data-theme-mode', savedMode);
         if (isDark) document.documentElement.classList.add('dark');
         if (savedMode === 'oled') document.documentElement.classList.add('oled');
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[MKP Boot] theme mode bootstrap failed', e);
+      }
 
       // 2. 加载全局色彩方案
       try {
@@ -28,7 +30,9 @@
         } else if (THEME_PALETTE[savedColor]) {
             document.documentElement.style.setProperty('--primary-rgb', THEME_PALETTE[savedColor]);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[MKP Boot] theme color bootstrap failed', e);
+      }
 
       // 3. 加载版本主题色彩
       try {
@@ -42,13 +46,17 @@
             document.documentElement.style.setProperty('--ver-' + ver + '-rgb', DEF[ver]);
           }
         });
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[MKP Boot] version theme bootstrap failed', e);
+      }
 
       try {
         if (localStorage.getItem('showOnboarding') === 'false') {
           document.documentElement.setAttribute('data-hide-onboarding', 'true');
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[MKP Boot] onboarding bootstrap failed', e);
+      }
     })();
   </script>
 </head>
@@ -162,7 +170,7 @@
     <main class="flex-1 overflow-hidden flex flex-col transition-colors">
       
       <div id="page-home" class="page flex-1" data-fixed-header="true">
-        <div class="page-header w-full">
+        <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top">
             <h1 id="title-page-home" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">选择机型</h1>
             <div class="flex items-center gap-3">
@@ -226,7 +234,7 @@
       </div>
 
       <div id="page-download" class="page flex-1 hidden" data-fixed-header="true">
-        <div class="page-header w-full">
+        <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top">
             <h1 id="title-page-download" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">模型预设</h1>
             <div class="flex items-center gap-3 relative">
@@ -345,7 +353,7 @@
       </div>
 
       <div id="page-calibrate" class="page flex-1 hidden" data-fixed-header="true">
-        <div class="page-header w-full">
+        <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top">
             <h1 id="title-page-calibrate" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">校准偏移</h1>
             <div class="flex items-center gap-3">
@@ -372,10 +380,9 @@
             </div>
 
             <div class="bg-white dark:bg-[#252526] rounded-xl card-shadow border border-transparent dark:border-[#333] p-5 mb-5 transition-colors" id="zCalibrationCard">
-              <div class="flex items-center justify-between mb-4">
-                <div class="text-sm font-medium text-gray-700 dark:text-gray-300">Z轴偏移校准</div>
-                
-                <div class="flex items-center gap-3">
+              <div class="calibration-card-head">
+                <div class="calibration-card-title text-sm font-medium text-gray-700 dark:text-gray-300">Z轴偏移校准</div>
+                <div class="calibration-card-actions">
                   <button id="zDirectEditBtn" onclick="openZGridDirectly()" class="bg-white dark:bg-[#252526] border border-gray-200 dark:border-[#444] text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-[#2A2A2A] transition-all shadow-sm">
                     不打开模型直接修改
                   </button>
@@ -434,9 +441,9 @@
             </div>
 
             <div class="bg-white dark:bg-[#252526] rounded-xl card-shadow border border-transparent dark:border-[#333] p-5 transition-colors" id="xyCalibrationCard">
-              <div class="flex items-center justify-between mb-4">
-                <div class="text-sm font-medium text-gray-700 dark:text-gray-300">XY轴偏移校准</div>
-                <div class="flex items-center gap-3">
+              <div class="calibration-card-head">
+                <div class="calibration-card-title text-sm font-medium text-gray-700 dark:text-gray-300">XY轴偏移校准</div>
+                <div class="calibration-card-actions">
                   <button id="xyDirectEditBtn" onclick="openXYGridDirectly()" class="bg-white dark:bg-[#252526] border border-gray-200 dark:border-[#444] text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-[#2A2A2A] transition-all shadow-sm">
                     不打开模型直接修改
                   </button>
@@ -466,51 +473,76 @@
                   <span class="text-sm text-gray-400 dark:text-gray-500">点击后请耐心等待3mf打开...</span>
                 </div>
                 <div id="xyGridSelector" class="hidden">
-                  <div class="xy-stage py-4">
+                  <div class="xy-stage py-2">
                     <div class="xy-y-axis" id="xyYGrid"></div>
-                    <div class="xy-summary-card">
-                      <div class="xy-summary-row">
-                        <div class="xy-summary-label">X</div>
-                        <div class="xy-summary-values">
-                          <div class="xy-summary-value">
-                            <div class="xy-summary-caption">原始值</div>
-                            <div class="xy-summary-number" id="xyOriginalX">0.00</div>
-                          </div>
-                          <div class="xy-summary-arrow-wrap">
-                            <div id="xyBadgeX" class="hidden text-xs font-medium px-2 py-0.5 rounded-full theme-bg-soft theme-text">+0.00</div>
-                            <svg class="xy-summary-arrow w-7 h-7 theme-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+                    <div class="xy-main-column">
+                      <div class="xy-summary-card" data-xy-summary-layout-card>
+                        <div class="xy-summary-layout-toolbar">
+                          <button
+                            type="button"
+                            class="xy-summary-drag-handle"
+                            data-xy-summary-drag-handle
+                            title="拖动调整摘要卡位置"
+                          >
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5.25h6M9 12h6M9 18.75h6"/>
                             </svg>
+                            <span>拖动定位</span>
+                          </button>
+                          <button
+                            type="button"
+                            id="xySummaryLayoutSaveBtn"
+                            class="xy-summary-layout-save"
+                            disabled
+                            aria-disabled="true"
+                            onclick="saveXYSummaryLayout(this)"
+                          >
+                            保存位置
+                          </button>
+                        </div>
+                        <div id="xySummaryLayoutMeta" class="xy-summary-layout-meta" aria-live="polite">X +30 px / Y +70 px</div>
+                        <div class="xy-summary-row">
+                          <div class="xy-summary-label">X</div>
+                          <div class="xy-summary-values">
+                            <div class="xy-summary-value">
+                              <div class="xy-summary-caption">原始值</div>
+                              <div class="xy-summary-number" id="xyOriginalX">0.00</div>
+                            </div>
+                            <div class="xy-summary-arrow-wrap">
+                              <div id="xyBadgeX" class="hidden text-xs font-medium px-2 py-0.5 rounded-full theme-bg-soft theme-text">+0.00</div>
+                              <svg class="xy-summary-arrow w-7 h-7 theme-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+                              </svg>
+                            </div>
+                            <div class="xy-summary-value">
+                              <div class="xy-summary-caption">修改后</div>
+                              <div class="xy-summary-number theme-text" id="xyNewX">0.00</div>
+                            </div>
                           </div>
-                          <div class="xy-summary-value">
-                            <div class="xy-summary-caption">修改后</div>
-                            <div class="xy-summary-number theme-text" id="xyNewX">0.00</div>
+                        </div>
+                        <div class="xy-summary-divider"></div>
+                        <div class="xy-summary-row">
+                          <div class="xy-summary-label">Y</div>
+                          <div class="xy-summary-values">
+                            <div class="xy-summary-value">
+                              <div class="xy-summary-caption">原始值</div>
+                              <div class="xy-summary-number" id="xyOriginalY">0.00</div>
+                            </div>
+                            <div class="xy-summary-arrow-wrap">
+                              <div id="xyBadgeY" class="hidden text-xs font-medium px-2 py-0.5 rounded-full theme-bg-soft theme-text">+0.00</div>
+                              <svg class="xy-summary-arrow w-7 h-7 theme-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+                              </svg>
+                            </div>
+                            <div class="xy-summary-value">
+                              <div class="xy-summary-caption">修改后</div>
+                              <div class="xy-summary-number theme-text" id="xyNewY">0.00</div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div class="xy-summary-divider"></div>
-                      <div class="xy-summary-row">
-                        <div class="xy-summary-label">Y</div>
-                        <div class="xy-summary-values">
-                          <div class="xy-summary-value">
-                            <div class="xy-summary-caption">原始值</div>
-                            <div class="xy-summary-number" id="xyOriginalY">0.00</div>
-                          </div>
-                          <div class="xy-summary-arrow-wrap">
-                            <div id="xyBadgeY" class="hidden text-xs font-medium px-2 py-0.5 rounded-full theme-bg-soft theme-text">+0.00</div>
-                            <svg class="xy-summary-arrow w-7 h-7 theme-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
-                            </svg>
-                          </div>
-                          <div class="xy-summary-value">
-                            <div class="xy-summary-caption">修改后</div>
-                            <div class="xy-summary-number theme-text" id="xyNewY">0.00</div>
-                          </div>
-                        </div>
-                      </div>
+                      <div class="xy-x-axis" id="xyXGrid"></div>
                     </div>
-                    <div class="xy-axis-corner-label">X</div>
-                    <div class="xy-x-axis" id="xyXGrid"></div>
                   </div>
                   <div class="flex justify-center mt-4">
                     <button onclick="saveXYOffset(this)" class="theme-btn-solid px-6 py-2.5 rounded-lg text-sm font-medium transition-all">保存并应用 XY 轴偏移</button>                  </div>
@@ -522,7 +554,7 @@
       </div>
 
       <div id="page-params" class="page flex-1 hidden" data-fixed-header="true">
-        <div class="page-header w-full">
+        <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top">
             <h1 id="title-page-params" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">修改参数</h1>
             <div class="flex items-center gap-3">
@@ -530,39 +562,41 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
                 恢复默认
               </button>
-              <button id="saveParamsBtn" onclick="saveAllDynamicParams()" class="theme-btn-solid px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
-                保存所有修改
+              <button id="saveParamsBtn" onclick="saveAllDynamicParams()" class="theme-btn-solid params-save-button params-save-idle px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all" disabled aria-disabled="true">
+                <span class="params-save-label">保存所有修改</span>
+                <span class="params-save-indicator" aria-hidden="true"></span>
               </button>
             </div>
           </div>
-          <div class="page-header-sub">
+          <div class="page-header-sub params-page-header-sub">
             <p class="text-xs text-gray-500 leading-none">当前编辑文件：<span id="currentEditingFile" class="font-mono theme-text">未选择</span></p>
           </div>
+          <div id="paramsSectionNav" class="params-section-nav" aria-label="参数分类"></div>
         </div>
-        <div class="page-content hide-scrollbar">
+        <div class="page-content hide-scrollbar" id="paramsPageContent">
           <div class="max-w-6xl">
-            <div class="bg-white dark:bg-[#252526] rounded-[28px] card-shadow p-6 mb-5 border border-gray-100 dark:border-[#333] transition-colors">
-              <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6">
+            <div class="bg-white dark:bg-[#252526] rounded-[24px] card-shadow p-5 mb-5 border border-gray-100 dark:border-[#333] transition-colors">
+              <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
                 <div>
                   <div class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/></svg>
                     JSON 预设参数工作台
                   </div>
-                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed max-w-3xl">按模块查看和修改当前预设。常用参数会用中文名称展示，鼠标悬停问号可查看说明；G-code 会按行拆开，便于逐步微调。</p>
+                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed max-w-3xl">按大类分块查看和修改当前预设。常用参数会用中文名称展示，鼠标悬停问号可查看说明；G-code 会按行拆开，便于逐步微调。</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <span class="px-3 py-1.5 rounded-full bg-gray-100 dark:bg-[#1E1E1E]">右键支持复制 / 粘贴 / 剪切 / 撤销 / 删除</span>
                   <span class="px-3 py-1.5 rounded-full bg-gray-100 dark:bg-[#1E1E1E]">保存时自动回写 JSON</span>
                 </div>
               </div>
-              <div id="dynamicParamsContainer" class="grid grid-cols-1 gap-6"></div>
             </div>
+            <div id="dynamicParamsContainer" class="grid grid-cols-1 gap-6"></div>
           </div>
         </div>
       </div>
 
       <div id="page-versions" class="page flex-1 hidden" data-fixed-header="true">
-        <div class="page-header w-full">
+        <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top">
             <h1 id="title-page-versions" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">版本控制</h1>
             <button id="btn-page-check-update" onclick="manualCheckAppUpdate(this)" class="theme-btn-solid px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
@@ -612,7 +646,7 @@
       </div>
 
       <div id="page-faq" class="page flex-1 hidden" data-fixed-header="true">
-        <div class="page-header w-full">
+        <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top">
             <h1 id="title-page-faq" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">常见问题</h1>
           </div>
@@ -648,7 +682,7 @@
       </div>
 
       <div id="page-about" class="page flex-1 hidden" data-fixed-header="true">
-        <div class="page-header w-full relative">
+        <div class="page-header page-header-fixed-shell w-full relative">
         <div class="page-header-top">
           <h1 id="title-page-about" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">关于软件</h1>
         </div>
@@ -802,14 +836,16 @@
 
       <div id="page-setting" class="page flex-1 hidden" data-fixed-header="true">
         
-        <div class="page-header w-full border-b border-gray-200 dark:border-[#333]" style="padding-bottom: 0 !important;">
+        <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top flex items-center justify-between">
             <h1 id="title-page-settings" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">软件设置</h1>
           </div>
-          <div class="mt-4 flex items-center gap-6 text-sm font-medium pb-3 relative z-10">
-            <button id="tab-setting-startup" onclick="scrollToSetting('setting-startup')" class="settings-nav-item active theme-text transition-colors">常规与启动</button>
-            <button id="tab-setting-appearance" onclick="scrollToSetting('setting-appearance')" class="settings-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">外观与主题</button>
-            <button id="tab-setting-update" onclick="scrollToSetting('setting-update')" class="settings-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">更新与关于</button>
+          <div class="page-header-sub params-page-header-sub">
+            <div id="settingsSectionNav" class="params-section-nav" aria-label="设置分类">
+              <button id="tab-setting-startup" onclick="scrollToSetting('setting-startup')" class="params-nav-item active theme-text transition-colors">常规与启动</button>
+              <button id="tab-setting-appearance" onclick="scrollToSetting('setting-appearance')" class="params-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">外观与主题</button>
+              <button id="tab-setting-update" onclick="scrollToSetting('setting-update')" class="params-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">更新与关于</button>
+            </div>
           </div>
         </div>
 
@@ -826,10 +862,13 @@
                     <div class="text-sm font-medium text-gray-900 dark:text-gray-100">显示欢迎界面</div>
                     <div class="text-xs text-gray-500 mt-1">每次启动时显示新手引导界面</div>
                   </div>
-                  <label class="relative inline-flex items-center cursor-pointer group">
-                    <input type="checkbox" id="showOnboarding" class="sr-only peer" checked>
-                    <div class="w-11 h-6 bg-gray-200 dark:bg-[#3E3E42] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 theme-peer-checked transition-all"></div>
-                  </label>
+                  <div class="settings-toggle-control">
+                    <span id="showOnboardingStatus" class="param-switch-status">已开启</span>
+                    <label class="mkp-switch">
+                      <input type="checkbox" id="showOnboarding" class="mkp-switch-input" checked>
+                      <span class="mkp-switch-track"></span>
+                    </label>
+                  </div>
                 </div>
 
                 <div>
@@ -838,10 +877,13 @@
                       <div class="text-sm font-medium text-gray-900 dark:text-gray-100">停靠动画 (Dock)</div>
                       <div class="text-xs text-gray-500 mt-1">启用类似操作系统的任务栏缩放动画</div>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer group">
-                      <input type="checkbox" id="settingMacAnim" class="sr-only peer" onchange="toggleMacDockAnimation(this.checked)">
-                      <div class="w-11 h-6 bg-gray-200 dark:bg-[#3E3E42] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 theme-peer-checked transition-all"></div>
-                    </label>
+                    <div class="settings-toggle-control">
+                      <span id="settingMacAnimStatus" class="param-switch-status">已开启</span>
+                      <label class="mkp-switch">
+                        <input type="checkbox" id="settingMacAnim" class="mkp-switch-input" onchange="toggleMacDockAnimation(this.checked)">
+                        <span class="mkp-switch-track"></span>
+                      </label>
+                    </div>
                   </div>
 
                   <div class="mt-4 bg-gray-50 dark:bg-[#1E1E1E] rounded-xl border border-gray-100 dark:border-[#333] p-5">
@@ -1050,13 +1092,31 @@
                           <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">只在界面上显示红点提示，由我手动决定何时下载</div>
                       </div>
                   </label>
-                </div>
+              </div>
 
               </div>
-              <div class="mt-6 p-4 bg-gray-50 dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#333] flex items-center justify-between">
+              <div id="setting-toml-conversion-card" class="mt-6 bg-white dark:bg-[#252526] rounded-2xl border border-gray-100 dark:border-[#333] shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 transition-colors">
+                <div class="settings-inline-card-shell">
+                  <div class="settings-inline-card-copy settings-inline-card-copy-compact">
+                    <div class="text-sm font-medium text-gray-900 dark:text-gray-100">高级工具：TOML 转 JSON</div>
+                    <div class="settings-inline-card-desc text-xs text-gray-500 mt-1">仅用于把旧 TOML 一次性转换成 JSON，结果会单独保存，不会混入常规预设。</div>
+                  </div>
+                  <div class="settings-inline-card-actions">
+                    <button id="btn-setting-convert-toml" class="theme-btn-solid px-4 py-2 text-sm rounded-lg transition-all" onclick="convertTomlPresetToJson(this)">选择 TOML 并转换</button>
+                    <button id="btn-setting-open-converted" class="btn-secondary px-4 py-2 text-sm rounded-lg transition-all" onclick="openTomlJsonConversionFolder(this)">打开资源管理器</button>
+                  </div>
+                </div>
+                <div class="mt-4 rounded-xl border border-dashed border-gray-200 dark:border-[#3A3A3A] bg-gray-50 dark:bg-[#1E1E1E] px-4 py-3">
+                  <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">转换输出目录</div>
+                  <div id="settingTomlConvertOutputPath" class="mt-2 break-all font-mono text-xs text-gray-600 dark:text-gray-300">读取中...</div>
+                  <div id="settingTomlConvertStatus" class="mt-2 text-xs text-gray-500 dark:text-gray-400">尚未开始转换。</div>
+                </div>
+              </div>
+
+              <div id="setting-bug-report-card" class="mt-6 p-4 bg-gray-50 dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#333] flex items-center justify-between">
                 <div>
-                  <div class="text-sm font-medium text-gray-900 dark:text-gray-100">遇到 Bug 或卡顿？</div>
-                  <div class="text-xs text-gray-500 mt-1">请生成诊断报告，发送至官方 QQ 群以获取协助</div>
+                  <div id="settingBugReportTitle" class="text-sm font-medium text-gray-900 dark:text-gray-100">遇到 Bug 或卡顿？</div>
+                  <div id="settingBugReportDesc" class="text-xs text-gray-500 mt-1">请生成诊断报告，发送至官方 QQ 群以获取协助</div>
                 </div>
                 <div class="flex gap-3">
                   <button class="theme-btn-soft px-4 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all" onclick="copyQQGroup(this)">
@@ -1234,11 +1294,11 @@
   <script src="assets/js/theme.js"></script>
   <script src="assets/js/logger.js"></script>
   <script src="assets/js/modal.js"></script>
+  <script src="assets/js/file-guards.js"></script>
   <script src="assets/js/app.js"></script>
   <script src="assets/js/updates.js"></script>
   <script src="assets/js/params.js"></script>
   <script src="assets/js/home.js"></script>
-  <script src="assets/js/home-layout-override.js"></script>
   <script src="assets/js/wizard.js"></script>
   <script src="assets/js/presets.js"></script>
   <script src="assets/js/ui-text.js"></script>

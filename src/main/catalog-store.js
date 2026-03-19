@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const {
+  decodeAndValidateImageDataUrl
+} = require('./file_guards');
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -48,21 +51,15 @@ function removeHomeCatalog(userDataRoot) {
   fs.rmSync(catalogDir, { recursive: true, force: true });
 }
 
-function dataUrlToBuffer(dataUrl) {
-  const match = String(dataUrl || '').match(/^data:(.+?);base64,(.+)$/);
-  if (!match) {
-    throw new Error('Invalid image payload.');
-  }
-  return Buffer.from(match[2], 'base64');
-}
-
 async function importHomeCatalogImage(userDataRoot, payload) {
   const itemType = sanitizeFileToken(payload.itemType || 'item');
   const itemId = sanitizeFileToken(payload.itemId || 'catalog');
   const imagesDir = getCatalogImagesDirectory(userDataRoot);
   ensureDir(imagesDir);
 
-  const buffer = dataUrlToBuffer(payload.dataUrl);
+  const { buffer } = decodeAndValidateImageDataUrl(payload.dataUrl, {
+    label: 'Catalog image'
+  });
   const fileName = `${itemType}_${itemId}_${Date.now()}.webp`;
   const filePath = path.join(imagesDir, fileName);
 

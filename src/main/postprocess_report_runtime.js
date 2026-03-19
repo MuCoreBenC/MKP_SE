@@ -73,7 +73,9 @@ function collectLegacyPostprocessArtifactPaths(gcodePath, options = {}) {
         }
       });
     }
-  } catch (error) {}
+  } catch (error) {
+    console.warn('[PostprocessReport] Failed to scan temp directory for legacy artifacts:', tempDir, error.message);
+  }
 
   return Array.from(paths);
 }
@@ -94,7 +96,9 @@ function cleanupLegacyPostprocessArtifacts(gcodePath, options = {}) {
         fs.unlinkSync(artifactPath);
         removedPaths.push(artifactPath);
       }
-    } catch (error) {}
+    } catch (error) {
+      console.warn('[PostprocessReport] Failed to remove legacy artifact:', artifactPath, error.message);
+    }
   });
 
   return removedPaths;

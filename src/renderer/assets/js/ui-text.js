@@ -134,12 +134,12 @@ function initUIText() {
     aboutIntro.textContent = '请加入我们的 QQ 群或查看视频教程获取更多帮助';
   }
 
-  const bugTitle = document.querySelector('#setting-update .mt-6 .text-sm.font-medium');
+  const bugTitle = document.getElementById('settingBugReportTitle');
   if (bugTitle) {
     bugTitle.textContent = '遇到 Bug 或卡顿？';
   }
 
-  const bugDesc = document.querySelector('#setting-update .mt-6 .text-xs.text-gray-500');
+  const bugDesc = document.getElementById('settingBugReportDesc');
   if (bugDesc) {
     bugDesc.textContent = '请生成诊断报告，发送至官方 QQ 群以获取协助';
   }
