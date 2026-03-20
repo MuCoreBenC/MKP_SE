@@ -476,31 +476,7 @@
                   <div class="xy-stage py-2">
                     <div class="xy-y-axis" id="xyYGrid"></div>
                     <div class="xy-main-column">
-                      <div class="xy-summary-card" data-xy-summary-layout-card>
-                        <div class="xy-summary-layout-toolbar">
-                          <button
-                            type="button"
-                            class="xy-summary-drag-handle"
-                            data-xy-summary-drag-handle
-                            title="拖动调整摘要卡位置"
-                          >
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5.25h6M9 12h6M9 18.75h6"/>
-                            </svg>
-                            <span>拖动定位</span>
-                          </button>
-                          <button
-                            type="button"
-                            id="xySummaryLayoutSaveBtn"
-                            class="xy-summary-layout-save"
-                            disabled
-                            aria-disabled="true"
-                            onclick="saveXYSummaryLayout(this)"
-                          >
-                            保存位置
-                          </button>
-                        </div>
-                        <div id="xySummaryLayoutMeta" class="xy-summary-layout-meta" aria-live="polite">X +30 px / Y +70 px</div>
+                      <div class="xy-summary-card">
                         <div class="xy-summary-row">
                           <div class="xy-summary-label">X</div>
                           <div class="xy-summary-values">
@@ -837,23 +813,24 @@
       <div id="page-setting" class="page flex-1 hidden" data-fixed-header="true">
         
         <div class="page-header page-header-fixed-shell w-full">
-          <div class="page-header-top flex items-center justify-between">
+          <div class="page-header-top">
             <h1 id="title-page-settings" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">软件设置</h1>
           </div>
           <div class="page-header-sub params-page-header-sub">
-            <div id="settingsSectionNav" class="params-section-nav" aria-label="设置分类">
-              <button id="tab-setting-startup" onclick="scrollToSetting('setting-startup')" class="params-nav-item active theme-text transition-colors">常规与启动</button>
-              <button id="tab-setting-appearance" onclick="scrollToSetting('setting-appearance')" class="params-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">外观与主题</button>
-              <button id="tab-setting-update" onclick="scrollToSetting('setting-update')" class="params-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">更新与关于</button>
-            </div>
+            <p class="text-xs text-gray-500 leading-none">统一管理启动、界面、更新和开发辅助相关选项</p>
+          </div>
+          <div id="settingsSectionNav" class="params-section-nav" aria-label="设置分类">
+            <button id="tab-setting-startup" onclick="scrollToSetting('setting-startup')" class="params-nav-item active theme-text transition-colors">常规与启动</button>
+            <button id="tab-setting-appearance" onclick="scrollToSetting('setting-appearance')" class="params-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">外观与主题</button>
+            <button id="tab-setting-update" onclick="scrollToSetting('setting-update')" class="params-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">更新与关于</button>
           </div>
         </div>
 
         <div class="page-content hide-scrollbar" id="settingsPageContent">
-          <div class="space-y-8 max-w-4xl">
+          <div class="settings-page-stack max-w-4xl">
             
             <div id="setting-startup" class="settings-section">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">常规与启动</h3>
+              <h3 class="settings-section-title text-lg font-semibold text-gray-900 dark:text-gray-100">常规与启动</h3>
               
               <div class="bg-white dark:bg-[#252526] rounded-2xl border border-gray-100 dark:border-[#333] shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 transition-colors">
                 
@@ -920,11 +897,34 @@
                   
                 </div>
 
+                <div id="settingGodModeRow" class="mt-6 pt-6 border-t border-gray-100 dark:border-[#333] hidden">
+                  <div class="flex items-center justify-between gap-6">
+                    <div>
+                      <div class="text-sm font-medium text-gray-900 dark:text-gray-100">上帝模式</div>
+                      <div class="text-xs text-gray-500 mt-1">仅开发环境可用。布局快照会写入独立文件，不混入用户端；每次保存都会生成新快照，方便回退到上一版或初始版。</div>
+                      <div id="settingGodModeMeta" class="text-[11px] text-gray-400 mt-2 break-all">快照目录：未初始化</div>
+                      <div id="settingGodModeDevTools" class="flex items-center gap-2 mt-3 flex-wrap">
+                        <button id="btnGodModeOpenFolder" type="button" class="theme-btn-soft px-3 py-1.5 rounded-lg text-xs font-medium transition-all">打开快照目录</button>
+                        <button id="btnGodModeRestorePrevious" type="button" class="theme-btn-soft px-3 py-1.5 rounded-lg text-xs font-medium transition-all">回退上一版</button>
+                        <button id="btnGodModeRestoreInitial" type="button" class="theme-btn-soft px-3 py-1.5 rounded-lg text-xs font-medium transition-all">恢复初始版</button>
+                        <button id="btnGodModeFreezeFormal" type="button" class="theme-btn-soft px-3 py-1.5 rounded-lg text-xs font-medium transition-all">固化当前快照</button>
+                      </div>
+                    </div>
+                    <div class="settings-toggle-control">
+                      <span id="settingGodModeStatus" class="param-switch-status">已关闭</span>
+                      <label class="mkp-switch">
+                        <input type="checkbox" id="settingGodMode" class="mkp-switch-input">
+                        <span class="mkp-switch-track"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
 
-            <div id="setting-appearance" class="settings-section pt-8">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">外观与主题</h3>
+            <div id="setting-appearance" class="settings-section">
+              <h3 class="settings-section-title text-lg font-semibold text-gray-900 dark:text-gray-100">外观与主题</h3>
               
               <div class="bg-white dark:bg-[#252526] rounded-2xl border border-gray-100 dark:border-[#333] shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 mb-6 transition-colors">
                 <div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">外观模式</div>
@@ -1052,8 +1052,8 @@
               </div>
             </div>
 
-            <div id="setting-update" class="settings-section pt-8">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">更新与关于</h3>
+            <div id="setting-update" class="settings-section">
+              <h3 class="settings-section-title text-lg font-semibold text-gray-900 dark:text-gray-100">更新与关于</h3>
               <div class="bg-white dark:bg-[#252526] rounded-2xl border border-gray-100 dark:border-[#333] shadow-[0_2px_10px_rgba(0,0,0,0.02)] p-6 transition-colors">
                 
                 <div class="flex items-center justify-between mb-6 pb-6 border-b border-gray-100 dark:border-[#333]">
@@ -1295,6 +1295,8 @@
   <script src="assets/js/logger.js"></script>
   <script src="assets/js/modal.js"></script>
   <script src="assets/js/file-guards.js"></script>
+  <script src="assets/js/layout-defaults.generated.js"></script>
+  <script src="assets/js/layout-defaults-runtime.js"></script>
   <script src="assets/js/app.js"></script>
   <script src="assets/js/updates.js"></script>
   <script src="assets/js/params.js"></script>
@@ -1302,6 +1304,36 @@
   <script src="assets/js/wizard.js"></script>
   <script src="assets/js/presets.js"></script>
   <script src="assets/js/ui-text.js"></script>
+  <script>
+    (async function loadDeveloperOnlyGodModeAssets() {
+      try {
+        if (!window.mkpAPI || typeof window.mkpAPI.getGodModeRuntimeState !== 'function') {
+          return;
+        }
+
+        const runtime = await window.mkpAPI.getGodModeRuntimeState();
+        if (!runtime || runtime.success !== true || !runtime.isDeveloperMode) {
+          return;
+        }
+
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = 'assets/css/god-mode-layout.css';
+        document.head.appendChild(css);
+
+        await new Promise((resolve) => {
+          css.addEventListener('load', resolve, { once: true });
+          css.addEventListener('error', resolve, { once: true });
+        });
+
+        const script = document.createElement('script');
+        script.src = 'assets/js/god-mode-layout.js';
+        document.body.appendChild(script);
+      } catch (error) {
+        console.warn('[MKP Boot] god mode asset bootstrap failed', error);
+      }
+    })();
+  </script>
   <script type="module">
     import { mountModernRuntime } from './app/entry/renderer-runtime.ts';
     import { mountDownloadReactPage } from './react-app/entry/download-page-entry.tsx';

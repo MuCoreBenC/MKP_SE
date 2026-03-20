@@ -29,18 +29,6 @@ let APP_REAL_VERSION = '0.0.0';
 const ACTIVE_PRESET_UPDATED_EVENT = 'mkp:active-preset-updated';
 const PRESET_MUTATION_SIGNAL_KEY = 'mkp_preset_mutation_signal';
 const RENDERER_WINDOW_SYNC_ID = `renderer_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-const XY_SUMMARY_LAYOUT_KEY = 'mkp_xy_summary_layout_v1';
-const DEFAULT_XY_SUMMARY_LAYOUT = Object.freeze({ x: 30, y: 70 });
-
-const xySummaryLayoutState = {
-  initialized: false,
-  dragging: false,
-  pointerId: null,
-  dragStartPointer: null,
-  dragStartLayout: { ...DEFAULT_XY_SUMMARY_LAYOUT },
-  saved: { ...DEFAULT_XY_SUMMARY_LAYOUT },
-  draft: { ...DEFAULT_XY_SUMMARY_LAYOUT }
-};
 
 const VERSION_THEMES = {
   standard: { title: '标准版', bg: 'var(--theme-standard-bg)', text: 'var(--theme-standard-text)' },
@@ -2195,8 +2183,8 @@ window.scrollToSetting = function(sectionId) {
   const containerRect = container.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
   
-  // 精准计算：当前已滚动的距离 + 目标相对于容器顶部的偏差 - 20px的安全留白
-  const targetScrollTop = container.scrollTop + (targetRect.top - containerRect.top) - 20;
+  // 与修改参数页保持一致，给锚点标题留一条更紧凑的安全留白
+  const targetScrollTop = container.scrollTop + (targetRect.top - containerRect.top) - 18;
 
   // 执行丝滑滚动
   container.scrollTo({
@@ -2763,174 +2751,6 @@ function updateXYSummary() {
   }
 }
 
-function sanitizeXYSummaryLayout(layout) {
-  const fallback = DEFAULT_XY_SUMMARY_LAYOUT;
-  const parsedX = Number(layout?.x);
-  const parsedY = Number(layout?.y);
-
-  return {
-    x: Number.isFinite(parsedX) ? Math.round(parsedX) : fallback.x,
-    y: Number.isFinite(parsedY) ? Math.round(parsedY) : fallback.y
-  };
-}
-
-function areXYSummaryLayoutsEqual(left, right) {
-  const a = sanitizeXYSummaryLayout(left);
-  const b = sanitizeXYSummaryLayout(right);
-  return a.x === b.x && a.y === b.y;
-}
-
-function formatSignedPixelOffset(value) {
-  const rounded = Math.round(Number(value) || 0);
-  return `${rounded >= 0 ? '+' : '-'}${Math.abs(rounded)} px`;
-}
-
-function readXYSummaryLayout() {
-  try {
-    const raw = localStorage.getItem(XY_SUMMARY_LAYOUT_KEY);
-    if (!raw) return { ...DEFAULT_XY_SUMMARY_LAYOUT };
-    return sanitizeXYSummaryLayout(JSON.parse(raw));
-  } catch (error) {
-    Logger.warn(`[XYLayout] Failed to parse saved XY summary layout: ${error.message}`);
-    return { ...DEFAULT_XY_SUMMARY_LAYOUT };
-  }
-}
-
-function getXYSummaryLayoutCard() {
-  return document.querySelector('[data-xy-summary-layout-card]');
-}
-
-function updateXYSummaryLayoutControls() {
-  const metaElement = document.getElementById('xySummaryLayoutMeta');
-  const saveButton = document.getElementById('xySummaryLayoutSaveBtn');
-  const dirty = !areXYSummaryLayoutsEqual(xySummaryLayoutState.draft, xySummaryLayoutState.saved);
-
-  if (metaElement) {
-    metaElement.textContent = `X ${formatSignedPixelOffset(xySummaryLayoutState.draft.x)} / Y ${formatSignedPixelOffset(xySummaryLayoutState.draft.y)}${dirty ? ' · 未保存' : ''}`;
-  }
-
-  if (saveButton) {
-    saveButton.disabled = !dirty;
-    saveButton.setAttribute('aria-disabled', String(!dirty));
-    saveButton.classList.toggle('is-dirty', dirty);
-  }
-}
-
-function applyXYSummaryLayout(layout, options = {}) {
-  const nextLayout = sanitizeXYSummaryLayout(layout);
-  const card = getXYSummaryLayoutCard();
-
-  if (card) {
-    card.style.setProperty('--xy-summary-offset-x', `${nextLayout.x}px`);
-    card.style.setProperty('--xy-summary-offset-y', `${nextLayout.y}px`);
-  }
-
-  xySummaryLayoutState.draft = nextLayout;
-  if (options.syncSaved === true) {
-    xySummaryLayoutState.saved = { ...nextLayout };
-  }
-
-  updateXYSummaryLayoutControls();
-}
-
-function bindXYSummaryLayoutEditor() {
-  const card = getXYSummaryLayoutCard();
-  const handle = document.querySelector('[data-xy-summary-drag-handle]');
-  if (!card || !handle) return;
-
-  if (!xySummaryLayoutState.initialized) {
-    const savedLayout = readXYSummaryLayout();
-    xySummaryLayoutState.saved = { ...savedLayout };
-    xySummaryLayoutState.draft = { ...savedLayout };
-    xySummaryLayoutState.initialized = true;
-  }
-
-  applyXYSummaryLayout(xySummaryLayoutState.draft);
-
-  if (handle.dataset.xySummaryLayoutBound === 'true') return;
-  handle.dataset.xySummaryLayoutBound = 'true';
-
-  const endDrag = (event) => {
-    if (!xySummaryLayoutState.dragging) return;
-    if (event?.pointerId != null && xySummaryLayoutState.pointerId != null && event.pointerId !== xySummaryLayoutState.pointerId) return;
-
-    const activePointerId = xySummaryLayoutState.pointerId;
-    xySummaryLayoutState.dragging = false;
-    xySummaryLayoutState.pointerId = null;
-    xySummaryLayoutState.dragStartPointer = null;
-    xySummaryLayoutState.dragStartLayout = null;
-    card.classList.remove('is-dragging');
-    document.body.classList.remove('xy-summary-dragging');
-
-    if (activePointerId != null && typeof handle.hasPointerCapture === 'function' && handle.hasPointerCapture(activePointerId)) {
-      try {
-        handle.releasePointerCapture(activePointerId);
-      } catch (error) {
-        Logger.warn(`[XYLayout] Failed to release pointer capture: ${error.message}`);
-      }
-    }
-
-    updateXYSummaryLayoutControls();
-  };
-
-  handle.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0) return;
-
-    event.preventDefault();
-    xySummaryLayoutState.dragging = true;
-    xySummaryLayoutState.pointerId = event.pointerId;
-    xySummaryLayoutState.dragStartPointer = { x: event.clientX, y: event.clientY };
-    xySummaryLayoutState.dragStartLayout = { ...xySummaryLayoutState.draft };
-    card.classList.add('is-dragging');
-    document.body.classList.add('xy-summary-dragging');
-
-    if (typeof handle.setPointerCapture === 'function') {
-      try {
-        handle.setPointerCapture(event.pointerId);
-      } catch (error) {
-        Logger.warn(`[XYLayout] Failed to capture pointer: ${error.message}`);
-      }
-    }
-  });
-
-  document.addEventListener('pointermove', (event) => {
-    if (!xySummaryLayoutState.dragging) return;
-    if (xySummaryLayoutState.pointerId != null && event.pointerId !== xySummaryLayoutState.pointerId) return;
-    if (!xySummaryLayoutState.dragStartPointer || !xySummaryLayoutState.dragStartLayout) return;
-
-    const nextLayout = {
-      x: xySummaryLayoutState.dragStartLayout.x + (event.clientX - xySummaryLayoutState.dragStartPointer.x),
-      y: xySummaryLayoutState.dragStartLayout.y + (event.clientY - xySummaryLayoutState.dragStartPointer.y)
-    };
-
-    applyXYSummaryLayout(nextLayout);
-  });
-
-  document.addEventListener('pointerup', endDrag);
-  document.addEventListener('pointercancel', endDrag);
-  window.addEventListener('blur', endDrag);
-}
-
-async function saveXYSummaryLayout(btnElement) {
-  const nextLayout = sanitizeXYSummaryLayout(xySummaryLayoutState.draft);
-  if (areXYSummaryLayoutsEqual(nextLayout, xySummaryLayoutState.saved)) return;
-
-  try {
-    localStorage.setItem(XY_SUMMARY_LAYOUT_KEY, JSON.stringify(nextLayout));
-    xySummaryLayoutState.saved = { ...nextLayout };
-    applyXYSummaryLayout(nextLayout);
-    if (btnElement && typeof btnElement.blur === 'function') btnElement.blur();
-    Logger.info(`[O306] Save XY summary layout | 附加数据: ${JSON.stringify(nextLayout)}`);
-  } catch (error) {
-    Logger.error(`[E306] XY summary layout save err: ${error.message}`);
-    await MKPModal.alert({
-      title: '保存位置失败',
-      msg: '摘要卡位置无法写入本地设置，请稍后重试。',
-      type: 'error'
-    });
-  }
-}
-
 function buildXYAxisButton(axis, offset) {
   const AXIS_SLOT = 28;
   const AXIS_MAJOR = 74;
@@ -3122,7 +2942,6 @@ window.openXYGridDirectly = openXYGridDirectly;
 window.openXYModel = openXYModel;
 window.selectXYOffset = selectXYOffset;
 window.saveXYOffset = saveXYOffset;
-window.saveXYSummaryLayout = saveXYSummaryLayout;
 window.refreshCalibrationOffsets = refreshCalibrationOffsets;
 
 
@@ -3248,7 +3067,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindFloatingSurfaceAutoDismiss();
   bindFloatingTooltipSystem();
   bindCrossWindowStorageSync();
-  bindXYSummaryLayoutEditor();
 
   Logger.info("Read variable: setting_dock_anim");
   const savedAnimState = localStorage.getItem('setting_dock_anim');

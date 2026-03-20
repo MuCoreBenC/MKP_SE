@@ -7,11 +7,6 @@ const WIPE_TOWER_FOOTPRINT = Object.freeze({
   maxYOffset: 28
 });
 
-const TOWER_ANCHOR_CENTER_OFFSET = Object.freeze({
-  x: 15,
-  y: 15
-});
-
 const DEFAULT_TOWER_GEOMETRY = Object.freeze({
   coreWidth: 20,
   coreDepth: 20,
@@ -391,7 +386,7 @@ function getNonNegativeNumber(source, keys, fallback = 0) {
 }
 
 function resolveTowerGeometryEnabled(source = {}, valueKeys = []) {
-  const toggleKeys = ['towerSlantedOuterWallEnabled', 'tower_slanted_outer_wall_enabled'];
+  const toggleKeys = ['slantedOuterWallEnabled', 'towerSlantedOuterWallEnabled', 'tower_slanted_outer_wall_enabled'];
 
   for (const key of toggleKeys) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
@@ -411,17 +406,46 @@ function resolveTowerGeometryEnabled(source = {}, valueKeys = []) {
 }
 
 function normalizeTowerGeometry(source = {}) {
-  const coreWidth = Math.max(DEFAULT_TOWER_GEOMETRY.coreWidth, getNonNegativeNumber(source, ['towerWidth', 'tower_width'], DEFAULT_TOWER_GEOMETRY.coreWidth));
-  const coreDepth = Math.max(DEFAULT_TOWER_GEOMETRY.coreDepth, getNonNegativeNumber(source, ['towerDepth', 'tower_depth'], DEFAULT_TOWER_GEOMETRY.coreDepth));
-  const brimWidth = getNonNegativeNumber(source, ['towerBrimWidth', 'tower_brim_width'], DEFAULT_TOWER_GEOMETRY.brimWidth);
-  const outerWallWidth = getNonNegativeNumber(source, ['towerOuterWallWidth', 'tower_outer_wall_width'], DEFAULT_TOWER_GEOMETRY.outerWallWidth);
-  const outerWallDepth = getNonNegativeNumber(source, ['towerOuterWallDepth', 'tower_outer_wall_depth'], outerWallWidth);
-  const slantedOuterWallEnabled = resolveTowerGeometryEnabled(source, ['tower_slanted_outer_wall_width', 'tower_slanted_outer_wall_depth']);
+  const coreWidth = Math.max(
+    DEFAULT_TOWER_GEOMETRY.coreWidth,
+    getNonNegativeNumber(source, ['coreWidth', 'towerWidth', 'tower_width'], DEFAULT_TOWER_GEOMETRY.coreWidth)
+  );
+  const coreDepth = Math.max(
+    DEFAULT_TOWER_GEOMETRY.coreDepth,
+    getNonNegativeNumber(source, ['coreDepth', 'towerDepth', 'tower_depth'], DEFAULT_TOWER_GEOMETRY.coreDepth)
+  );
+  const brimWidth = getNonNegativeNumber(
+    source,
+    ['brimWidth', 'towerBrimWidth', 'tower_brim_width'],
+    DEFAULT_TOWER_GEOMETRY.brimWidth
+  );
+  const outerWallWidth = getNonNegativeNumber(
+    source,
+    ['outerWallWidth', 'towerOuterWallWidth', 'tower_outer_wall_width'],
+    DEFAULT_TOWER_GEOMETRY.outerWallWidth
+  );
+  const outerWallDepth = getNonNegativeNumber(
+    source,
+    ['outerWallDepth', 'towerOuterWallDepth', 'tower_outer_wall_depth'],
+    outerWallWidth
+  );
+  const slantedOuterWallEnabled = resolveTowerGeometryEnabled(
+    source,
+    ['slantedOuterWallWidth', 'slantedOuterWallDepth', 'tower_slanted_outer_wall_width', 'tower_slanted_outer_wall_depth']
+  );
   const slantedOuterWallWidth = slantedOuterWallEnabled
-    ? getNonNegativeNumber(source, ['towerSlantedOuterWallWidth', 'tower_slanted_outer_wall_width'], DEFAULT_TOWER_GEOMETRY.slantedOuterWallWidth)
+    ? getNonNegativeNumber(
+      source,
+      ['slantedOuterWallWidth', 'towerSlantedOuterWallWidth', 'tower_slanted_outer_wall_width'],
+      DEFAULT_TOWER_GEOMETRY.slantedOuterWallWidth
+    )
     : 0;
   const slantedOuterWallDepth = slantedOuterWallEnabled
-    ? getNonNegativeNumber(source, ['towerSlantedOuterWallDepth', 'tower_slanted_outer_wall_depth'], slantedOuterWallWidth)
+    ? getNonNegativeNumber(
+      source,
+      ['slantedOuterWallDepth', 'towerSlantedOuterWallDepth', 'tower_slanted_outer_wall_depth'],
+      slantedOuterWallWidth
+    )
     : 0;
   const layerWidth = coreWidth + ((outerWallWidth + slantedOuterWallWidth) * 2);
   const layerDepth = coreDepth + ((outerWallDepth + slantedOuterWallDepth) * 2);
@@ -447,16 +471,12 @@ function normalizeTowerGeometry(source = {}) {
 function buildWipingTowerSafeFootprint(towerGeometry = DEFAULT_TOWER_GEOMETRY) {
   const width = Number.isFinite(Number(towerGeometry?.baseWidth)) ? Number(towerGeometry.baseWidth) : DEFAULT_TOWER_GEOMETRY.baseWidth;
   const depth = Number.isFinite(Number(towerGeometry?.baseDepth)) ? Number(towerGeometry.baseDepth) : DEFAULT_TOWER_GEOMETRY.baseDepth;
-  const minXOffset = roundTo(TOWER_ANCHOR_CENTER_OFFSET.x - (width / 2), 3);
-  const maxXOffset = roundTo(TOWER_ANCHOR_CENTER_OFFSET.x + (width / 2), 3);
-  const minYOffset = roundTo(TOWER_ANCHOR_CENTER_OFFSET.y - (depth / 2), 3);
-  const maxYOffset = roundTo(TOWER_ANCHOR_CENTER_OFFSET.y + (depth / 2), 3);
 
   return {
-    minXOffset: Math.min(WIPE_TOWER_FOOTPRINT.minXOffset, minXOffset),
-    maxXOffset: Math.max(WIPE_TOWER_FOOTPRINT.maxXOffset, maxXOffset),
-    minYOffset: Math.min(WIPE_TOWER_FOOTPRINT.minYOffset, minYOffset),
-    maxYOffset: Math.max(WIPE_TOWER_FOOTPRINT.maxYOffset, maxYOffset)
+    minXOffset: Math.min(WIPE_TOWER_FOOTPRINT.minXOffset, 0),
+    maxXOffset: Math.max(WIPE_TOWER_FOOTPRINT.maxXOffset, roundTo(width, 3)),
+    minYOffset: Math.min(WIPE_TOWER_FOOTPRINT.minYOffset, 0),
+    maxYOffset: Math.max(WIPE_TOWER_FOOTPRINT.maxYOffset, roundTo(depth, 3))
   };
 }
 
@@ -478,6 +498,18 @@ function transformTowerTemplateLine(line, targetWidth, targetDepth) {
   }
 
   return nextLine;
+}
+
+function resolveTowerTemplateAxisOffset(anchor, targetSpan = 20) {
+  const safeSpan = Number.isFinite(Number(targetSpan)) ? Number(targetSpan) : 20;
+  return roundTo(anchor - (20 - (safeSpan / 2)), 3);
+}
+
+function resolveTowerTemplateOffsets(wiperX, wiperY, targetWidth = 20, targetDepth = 20) {
+  return {
+    x: resolveTowerTemplateAxisOffset(wiperX, targetWidth),
+    y: resolveTowerTemplateAxisOffset(wiperY, targetDepth)
+  };
 }
 
 function normalizeConfig(source = {}) {
@@ -1091,12 +1123,13 @@ function buildTowerPreparationTravelGcode(options = {}) {
   const isPla = filamentType.includes('PLA');
   const lines = [`G1 Z${roundTo(currentLayerHeight, 3).toFixed(3)}`];
   const variableWipeMove = `G1 X15 Y2${getPseudoRandom()}`;
+  const prepTemplateOffsets = resolveTowerTemplateOffsets(wiperX, wiperY, 20, 20);
   const pushOffsetMove = (line) => {
     lines.push(
       processGcodeOffset(
         line,
-        wiperX - 5,
-        wiperY - 5,
+        prepTemplateOffsets.x,
+        prepTemplateOffsets.y,
         currentLayerHeight + 3,
         'normal',
         { machineBounds }
@@ -1859,7 +1892,7 @@ function prepareTrackedFeatureInjectionWithReport(options = {}) {
     pushReportStep(report, {
       kind: 'decision',
       title: `跳过无效的${describeFeatureKind(featureKind)}`,
-      human: `找到了候选${describeFeatureKind(featureKind)}，但清理擦嘴尾迹后已经没有有效的 XY 挤出，所以不会注入涂胶动作。`,
+      human: `找到了候选${describeFeatureKind(featureKind)}，但清理尾迹挤出后已经没有有效的 XY 挤出，所以不会注入涂胶动作。`,
       technical: `${segmentData.marker} lines ${startLine}-${endLine}; deleteWipe() + hasValidInterfaceSet() => invalid; rawE=${formatCompactNumber(rawExtrusionSum)} cleanedE=${formatCompactNumber(cleanedExtrusionSum)}`,
       data: segmentData
     });
@@ -2398,11 +2431,12 @@ function appendPostGlueRecovery(target, currentZ, config, runtimeState, delayedT
     return;
   }
 
+  const recoveryTemplateOffsets = resolveTowerTemplateOffsets(config.wiping.wiperX, config.wiping.wiperY, 20, 20);
   target.push(
     processGcodeOffset(
       'G1 X20 Y10.19',
-      config.wiping.wiperX - 5,
-      config.wiping.wiperY - 5,
+      recoveryTemplateOffsets.x,
+      recoveryTemplateOffsets.y,
       currentZ + 3,
       'normal',
       { machineBounds: config.machine.bounds }
@@ -2465,6 +2499,12 @@ function buildTowerBaseLayerGcode(options = {}) {
     ? options.towerBaseLayerGcode
     : DEFAULT_TOWER_BASE_LAYER_GCODE;
   const towerExtrudeRatio = roundTo((firstLayerHeight / 0.2) * 0.8, 3);
+  const baseTemplateOffsets = resolveTowerTemplateOffsets(
+    wiperX,
+    wiperY,
+    towerGeometry.baseWidth,
+    towerGeometry.baseDepth
+  );
   const lines = [];
 
   lines.push(`G1 F${Math.round(travelSpeed * 60)}`);
@@ -2499,15 +2539,15 @@ function buildTowerBaseLayerGcode(options = {}) {
 
     if (line.includes('G1 ') && !line.includes('G1 E') && !line.includes('G1 F')) {
       const templateLine = transformTowerTemplateLine(line, towerGeometry.baseWidth, towerGeometry.baseDepth);
-      lines.push(
-        processGcodeOffset(
-          templateLine,
-          wiperX - 5,
-          wiperY - 5,
-          0,
-          'tower',
-          {
-            machineBounds: options.machineBounds,
+        lines.push(
+          processGcodeOffset(
+            templateLine,
+            baseTemplateOffsets.x,
+            baseTemplateOffsets.y,
+            0,
+            'tower',
+            {
+              machineBounds: options.machineBounds,
             towerExtrudeRatio
           }
         )
@@ -2549,6 +2589,12 @@ function buildWipingTowerLayerGcode(options = {}) {
   const wiperX = towerPosition.wiperX;
   const wiperY = towerPosition.wiperY;
   const towerExtrudeRatio = roundTo(suggestedLayerHeight / 0.2, 3);
+  const layerTemplateOffsets = resolveTowerTemplateOffsets(
+    wiperX,
+    wiperY,
+    towerGeometry.layerWidth,
+    towerGeometry.layerDepth
+  );
   const lines = [];
 
   lines.push(`G1 F${Math.round(travelSpeed * 60)}`);
@@ -2558,15 +2604,15 @@ function buildWipingTowerLayerGcode(options = {}) {
   lines.push(`; LAYER_HEIGHT: ${formatCompactNumber(suggestedLayerHeight)}`);
 
   if (roundTo(suggestedLayerHeight, 3) === roundTo(0.65 * nozzleDiameter, 3)) {
-    lines.push(
-      `${processGcodeOffset(
-        'G1 X20 Y20',
-        wiperX - 5,
-        wiperY - 5,
-        towerHeight + 3,
-        'tower',
-        {
-          machineBounds: options.machineBounds,
+      lines.push(
+        `${processGcodeOffset(
+          'G1 X20 Y20',
+          layerTemplateOffsets.x,
+          layerTemplateOffsets.y,
+          towerHeight + 3,
+          'tower',
+          {
+            machineBounds: options.machineBounds,
           towerExtrudeRatio
         }
       )} Z${roundTo(currentLayerHeight + 0.6, 3).toFixed(3)}`
@@ -2611,8 +2657,8 @@ function buildWipingTowerLayerGcode(options = {}) {
     lines.push(
       processGcodeOffset(
         templateLine,
-        wiperX - 5,
-        wiperY - 5,
+        layerTemplateOffsets.x,
+        layerTemplateOffsets.y,
         0,
         'tower',
         {
@@ -2628,8 +2674,8 @@ function buildWipingTowerLayerGcode(options = {}) {
   lines.push(
     `${processGcodeOffset(
       leavingTowerLine,
-      wiperX - 5,
-      wiperY - 5,
+      layerTemplateOffsets.x,
+      layerTemplateOffsets.y,
       towerHeight + 0.7,
       'tower',
       {

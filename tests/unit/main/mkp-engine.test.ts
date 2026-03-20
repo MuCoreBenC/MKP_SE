@@ -90,7 +90,21 @@ ironing_path_offset_mm = -0.15
       userDryTime: 8,
       wiperX: 16,
       wiperY: 26,
-      wipeTowerPrintSpeed: 42
+      wipeTowerPrintSpeed: 42,
+      towerGeometry: {
+        coreWidth: 20,
+        coreDepth: 20,
+        brimWidth: 0,
+        outerWallWidth: 0,
+        outerWallDepth: 0,
+        slantedOuterWallEnabled: false,
+        slantedOuterWallWidth: 0,
+        slantedOuterWallDepth: 0,
+        layerWidth: 20,
+        layerDepth: 20,
+        baseWidth: 20,
+        baseDepth: 20
+      }
     });
 
     expect(config.templates.wipingGcode.length).toBeGreaterThan(0);
@@ -136,18 +150,46 @@ ironing_path_offset_mm = -0.15
 
     expect(config.wiping.towerGeometry).toEqual({
       baseDepth: 36,
-      baseWidth: 34,
+      baseWidth: 38,
       brimWidth: 2,
       coreDepth: 24,
       coreWidth: 26,
       layerDepth: 32,
-      layerWidth: 30,
+      layerWidth: 34,
       outerWallDepth: 1,
       outerWallWidth: 1.5,
       slantedOuterWallDepth: 3,
       slantedOuterWallEnabled: true,
       slantedOuterWallWidth: 2.5
     });
+  });
+
+  it('accepts normalized towerGeometry contracts when builder helpers receive already-normalized runtime config', () => {
+    const base = buildTowerBaseLayerGcode({
+      firstLayerHeight: 0.28,
+      firstLayerSpeed: 20,
+      retractLength: 0.8,
+      towerBaseLayerGcode: ['G1 X10 Y10 E.10000'],
+      towerGeometry: {
+        coreWidth: 20,
+        coreDepth: 20,
+        brimWidth: 3,
+        outerWallWidth: 1,
+        outerWallDepth: 2,
+        slantedOuterWallEnabled: true,
+        slantedOuterWallWidth: 2,
+        slantedOuterWallDepth: 1,
+        layerWidth: 26,
+        layerDepth: 26,
+        baseWidth: 32,
+        baseDepth: 34
+      },
+      travelSpeed: 150,
+      wiperX: 30,
+      wiperY: 40
+    });
+
+    expect(base).toContain('G1 X30.000 Y40.000 E0.112');
   });
 
   it('defaults legacy presets to wiping-tower mode unless a new explicit tower toggle disables it', () => {
@@ -1092,10 +1134,10 @@ ironing_path_offset_mm = -0.15
       }
     );
 
-    expect(result).toContain('G1 X45.000 Y45.190');
+    expect(result).toContain('G1 X40.000 Y40.190');
     expect(result).toContain(';Prepare for next tower');
     expect(result).toContain('M109 S220');
-    expect(result).toContain('G1 X40.000 Y58.000');
+    expect(result).toContain('G1 X45.000 Y55.000');
     expect(result).not.toContain(';Leaving Wiping Tower');
     expect(result).not.toContain('; FEATURE: Inner wall');
     expect(result).not.toContain('resume print height');
@@ -1219,15 +1261,15 @@ ironing_path_offset_mm = -0.15
       })
     ).toEqual([
       'G1 Z0.200',
-      'G1 X30.000 Y38.000',
-      'G1 X40.000 Y40.000',
-      'G1 X30.000 Y38.000',
-      'G1 X40.000 Y40.000',
-      'G1 X30.000 Y38.000',
-      'G1 X40.000 Y40.000',
-      'G1 X30.000 Y38.000',
-      'G1 X30.000 Y30.000',
-      'G1 X35.000 Y32.000'
+      'G1 X25.000 Y33.000',
+      'G1 X35.000 Y35.000',
+      'G1 X25.000 Y33.000',
+      'G1 X35.000 Y35.000',
+      'G1 X25.000 Y33.000',
+      'G1 X35.000 Y35.000',
+      'G1 X25.000 Y33.000',
+      'G1 X25.000 Y25.000',
+      'G1 X30.000 Y27.000'
     ]);
   });
 
@@ -1244,15 +1286,15 @@ ironing_path_offset_mm = -0.15
       })
     ).toEqual([
       'G1 Z0.400',
-      'G1 X30.000 Y42.000',
-      'G1 X40.000 Y40.000',
-      'G1 X30.000 Y42.000',
-      'G1 X40.000 Y40.000',
-      'G1 X30.000 Y42.000',
-      'G1 X40.000 Y40.000',
-      'G1 X30.000 Y42.000',
-      'G1 X30.000 Y30.000',
-      'G1 X35.000 Y27.000'
+      'G1 X25.000 Y37.000',
+      'G1 X35.000 Y35.000',
+      'G1 X25.000 Y37.000',
+      'G1 X35.000 Y35.000',
+      'G1 X25.000 Y37.000',
+      'G1 X35.000 Y35.000',
+      'G1 X25.000 Y37.000',
+      'G1 X25.000 Y25.000',
+      'G1 X30.000 Y22.000'
     ]);
   });
 
@@ -1281,7 +1323,7 @@ ironing_path_offset_mm = -0.15
       'G92 E0',
       'G1 Z0.280;Tower Z',
       'G1 F1200',
-      'G1 X45.000 Y55.000 E0.288',
+      'G1 X40.000 Y50.000 E0.288',
       'G92 E0',
       'G92 E0',
       'G1 F9000'
@@ -1321,12 +1363,12 @@ ironing_path_offset_mm = -0.15
       'G92 E0',
       'G1 E0.8',
       'G92 E0',
-      'G1 X45.000 Y55.000 E0.167',
+      'G1 X40.000 Y50.000 E0.167',
       'G92 E0',
       'G1 E-0.49',
       'G92 E0',
       'G1 F9000',
-      'G1 X58.000 Y68.000 Z1.350 ;Leaving Wiping Tower',
+      'G1 X53.000 Y63.000 Z1.350 ;Leaving Wiping Tower',
       '; LAYER_HEIGHT: 0.2'
     ]);
   });
@@ -1391,9 +1433,9 @@ ironing_path_offset_mm = -0.15
       wiperY: 40
     });
 
-    expect(base).toContain('G1 X29.000 Y38.000 E0.160');
-    expect(base).toContain('G1 X61.000 Y72.000 E0.160');
-    expect(layer).toContain('G1 X31.782 Y73.218 E0.786');
+    expect(base).toContain('G1 X30.000 Y40.000 E0.112');
+    expect(base).toContain('G1 X62.000 Y72.000 E0.112');
+    expect(layer).toContain('G1 X30.783 Y65.217 E0.393');
   });
 
   it('defaults direct tower-layer generation back to slow-line speed until fast-line is explicitly enabled', () => {
@@ -1456,13 +1498,13 @@ ironing_path_offset_mm = -0.15
 
     expect(result).toContain(';Extruding Ratio: 1');
     expect(result).toContain('; LAYER_HEIGHT: 0.2');
-    expect(result).toContain('G1 X35.000 Y35.000 E0.340 ;MoreExtrusion');
-    expect(result).toContain('G1 X44.810 Y35.000 E0.340 ;MoreExtrusion');
-    expect(result).toContain('G1 X25.602 Y44.398 E0.604');
-    expect(result).toContain('G1 X44.790 Y44.730 E0.581');
-    expect(result).toContain('G1 X43.700 Y44.760');
-    expect(result).toContain('G1 X48.000 Y48.000 Z1.100 ;Leaving Wiping Tower');
-    expect(result).not.toContain('G1 X35.000 Y35.000 Z0.800');
+    expect(result).toContain('G1 X30.000 Y30.000 E0.340 ;MoreExtrusion');
+    expect(result).toContain('G1 X39.810 Y30.000 E0.340 ;MoreExtrusion');
+    expect(result).toContain('G1 X20.602 Y39.398 E0.604');
+    expect(result).toContain('G1 X39.790 Y39.730 E0.581');
+    expect(result).toContain('G1 X38.700 Y39.760');
+    expect(result).toContain('G1 X43.000 Y43.000 Z1.100 ;Leaving Wiping Tower');
+    expect(result).not.toContain('G1 X30.000 Y30.000 Z0.800');
   });
 
   it('replays the full default Python-like wiping tower shell when the delayed layer-progress injection fires', () => {
@@ -1504,10 +1546,10 @@ ironing_path_offset_mm = -0.15
 
     expect(result).toContain(';Prepare for next tower');
     expect(result).toContain('; FEATURE: Inner wall');
-    expect(result).toContain('G1 X35.000 Y35.000 E0.340 ;MoreExtrusion');
-    expect(result).toContain('G1 X25.602 Y44.398 E0.604');
-    expect(result).toContain('G1 X44.790 Y44.730 E0.581');
-    expect(result).toContain('G1 X43.700 Y44.760');
+    expect(result).toContain('G1 X30.000 Y30.000 E0.340 ;MoreExtrusion');
+    expect(result).toContain('G1 X20.602 Y39.398 E0.604');
+    expect(result).toContain('G1 X39.790 Y39.730 E0.581');
+    expect(result).toContain('G1 X38.700 Y39.760');
     expect(result).toContain(';Leaving Wiping Tower');
     expect(result).not.toContain('resume print height');
   });
@@ -1563,7 +1605,7 @@ ironing_path_offset_mm = -0.15
     );
 
     const prepareIndex = result.indexOf(';Prepare for next tower');
-    const travelIndex = result.indexOf('G1 X30.000 Y38.000');
+    const travelIndex = result.indexOf('G1 X25.000 Y33.000');
     const refillIndex = result.indexOf('G1 E10.5 F1500');
     const towerIndex = result.indexOf(';Tower_Layer_Gcode');
     const layerProgressIndex = result.indexOf('; update layer progress');
@@ -2220,14 +2262,14 @@ ironing_path_offset_mm = -0.15
       }
     );
 
-    const baseStart = result.indexOf('G1 X34.681 Y35.319');
+    const baseStart = result.indexOf('G1 X29.681 Y30.319');
     const firstChangeLayer = result.indexOf('; CHANGE_LAYER');
 
     expect(baseStart).toBeGreaterThanOrEqual(0);
     expect(firstChangeLayer).toBeGreaterThan(baseStart);
     expect(result).toContain('G1 Z0.200;Tower Z');
     expect(result).toContain('G1 F3000');
-    expect(result).toContain('G1 X21.860 Y21.860');
+    expect(result).toContain('G1 X21.762 Y21.762');
   });
 
   it('replays the old delayed-wall behavior by moving a wall block behind internal solid infill after a support-interface layer', () => {

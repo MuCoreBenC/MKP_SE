@@ -54,6 +54,32 @@ const isReleaseCenterMode = process.argv.includes('--release-center');
 const AdmZip = require('adm-zip');
 const LOG_RETENTION_MS = 7 * 24 * 3600 * 1000;
 let hasCleanedExpiredLogs = false;
+let getGodModeLayoutsDirectory = () => null;
+let getGodModeFormalLayoutDefaultsFilePath = () => null;
+let readGodModeLayoutState = () => {
+  throw new Error('God Mode layout storage is unavailable in packaged builds');
+};
+let restoreGodModeLayoutSnapshot = () => {
+  throw new Error('God Mode layout storage is unavailable in packaged builds');
+};
+let saveGodModeLayoutSnapshot = () => {
+  throw new Error('God Mode layout storage is unavailable in packaged builds');
+};
+let writeGodModeFormalLayoutDefaults = () => {
+  throw new Error('God Mode layout storage is unavailable in packaged builds');
+};
+
+if (!app.isPackaged) {
+  ({
+    getGodModeLayoutsDirectory,
+    getGodModeFormalLayoutDefaultsFilePath,
+    readGodModeLayoutState,
+    restoreGodModeLayoutSnapshot,
+    saveGodModeLayoutSnapshot,
+    writeGodModeFormalLayoutDefaults
+  } = require('./god_mode_layout_store'));
+}
+
 const mainProcessDiagnosticsState = {
   lastPage: 'startup',
   lastRendererLog: null
@@ -221,6 +247,10 @@ appendMainProcessLog(
 
 function getProjectRootPath() {
   return path.join(__dirname, '../../');
+}
+
+function isDeveloperLayoutModeAvailable() {
+  return !app.isPackaged;
 }
 
 function getResourcesRootPath() {
@@ -1371,9 +1401,122 @@ if (isPostprocessReportMode) {
   });
 
   // 监听前端的系统数据请求
-  ipcMain.handle('get-userdata-path', () => {
-    return path.join(app.getPath('userData'), 'Presets'); 
-  });
+ipcMain.handle('get-userdata-path', () => {
+  return path.join(app.getPath('userData'), 'Presets'); 
+});
+
+ipcMain.handle('get-god-mode-runtime-state', async () => {
+  const isDeveloperMode = isDeveloperLayoutModeAvailable();
+  const projectRoot = getProjectRootPath();
+  return {
+    success: true,
+    isDeveloperMode,
+    projectRoot,
+    directory: isDeveloperMode ? getGodModeLayoutsDirectory(projectRoot) : null,
+    formalDefaultsFile: isDeveloperMode ? getGodModeFormalLayoutDefaultsFilePath(projectRoot) : null
+  };
+});
+
+ipcMain.handle('read-god-mode-layout-state', async () => {
+  if (!isDeveloperLayoutModeAvailable()) {
+    return {
+      success: false,
+      isDeveloperMode: false,
+      error: 'God Mode layouts are only available in development builds'
+    };
+  }
+
+  const state = readGodModeLayoutState(getProjectRootPath());
+  return {
+    success: true,
+    isDeveloperMode: true,
+    formalDefaultsFile: getGodModeFormalLayoutDefaultsFilePath(getProjectRootPath()),
+    ...state
+  };
+});
+
+ipcMain.handle('save-god-mode-layout-snapshot', async (event, payload = {}) => {
+  if (!isDeveloperLayoutModeAvailable()) {
+    return {
+      success: false,
+      isDeveloperMode: false,
+      error: 'God Mode layouts are only available in development builds'
+    };
+  }
+
+  const result = saveGodModeLayoutSnapshot(
+    getProjectRootPath(),
+    payload.layouts || {},
+    { reason: payload.reason || 'manual-save' }
+  );
+
+  return {
+    success: true,
+    isDeveloperMode: true,
+    formalDefaultsFile: getGodModeFormalLayoutDefaultsFilePath(getProjectRootPath()),
+    ...result
+  };
+});
+
+ipcMain.handle('restore-god-mode-layout-snapshot', async (event, target = 'previous') => {
+  if (!isDeveloperLayoutModeAvailable()) {
+    return {
+      success: false,
+      isDeveloperMode: false,
+      error: 'God Mode layouts are only available in development builds'
+    };
+  }
+
+  const result = restoreGodModeLayoutSnapshot(getProjectRootPath(), target);
+  return {
+    success: true,
+    isDeveloperMode: true,
+    formalDefaultsFile: getGodModeFormalLayoutDefaultsFilePath(getProjectRootPath()),
+    ...result
+  };
+});
+
+ipcMain.handle('open-god-mode-layout-folder', async () => {
+  if (!isDeveloperLayoutModeAvailable()) {
+    return {
+      success: false,
+      isDeveloperMode: false,
+      error: 'God Mode layouts are only available in development builds'
+    };
+  }
+
+  const targetPath = getGodModeLayoutsDirectory(getProjectRootPath());
+  fs.mkdirSync(targetPath, { recursive: true });
+  const openError = await shell.openPath(targetPath);
+  return {
+    success: !openError,
+    isDeveloperMode: true,
+    directory: targetPath,
+    error: openError || null
+  };
+});
+
+ipcMain.handle('freeze-god-mode-layout-as-formal', async (event, payload = {}) => {
+  if (!isDeveloperLayoutModeAvailable()) {
+    return {
+      success: false,
+      isDeveloperMode: false,
+      error: 'God Mode layouts are only available in development builds'
+    };
+  }
+
+  const result = writeGodModeFormalLayoutDefaults(
+    getProjectRootPath(),
+    payload.layouts || {},
+    { source: payload.source || 'god-mode-freeze' }
+  );
+
+  return {
+    success: true,
+    isDeveloperMode: true,
+    ...result
+  };
+});
 
   function createWindow() {
     const mainWindow = new BrowserWindow({

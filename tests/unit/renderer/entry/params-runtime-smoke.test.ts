@@ -81,6 +81,11 @@ describe('params.js modern runtime smoke', () => {
     expect(block).toMatch(/msg: `[\s\S]*\$\{escapeParamHtml\(fileName\)\}[\s\S]*`/);
   });
 
+  it('removes the legacy params save entry so runtime behavior only has one real save path', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    expect(source).not.toContain('async function legacySaveAllDynamicParams(');
+  });
+
   it('renders the params save button as an idle disabled control until the active store becomes dirty', () => {
     const html = readFileSync('D:/trae/MKP_SE/src/renderer/index.html', 'utf8');
 
@@ -145,8 +150,7 @@ describe('params.js modern runtime smoke', () => {
 
     expect(helperBlock).toMatch(/const persistedFlatState = buildRenderableParamState\(normalizeFlatState\(flatState\)\)\.flat;/);
     expect(helperBlock).toMatch(/store\.history = \[nextSnapshot\];/);
-    expect(helperBlock).toMatch(/store\.savedFullSerialized = serializeParamFullState\(persistedFlatState\);/);
-    expect(helperBlock).toMatch(/store\.dirty = false;/);
+    expect(helperBlock).toMatch(/markParamStoreSnapshotSaved\(store, nextSnapshot\);/);
     expect(helperBlock).toMatch(/updateParamDirtyState\(store\);/);
     expect(restoreBlock).not.toMatch(/pushParamSnapshotToHistory\(restoredSnapshot, \{ replaceHistory: true, markSaved: true, skipDirtySync: true \}\)/);
     expect(restoreBlock).toMatch(/clearParamsSaveButtonFeedback\(saveBtn\);[\s\S]*delete saveBtn\.dataset\.isSaving;[\s\S]*updateParamDirtyUI\(restoredStore\);/);
@@ -207,7 +211,7 @@ describe('params.js modern runtime smoke', () => {
     expect(block).toMatch(/applyParamSnapshotToDom\(activeSnapshot, \{ restoreFocus: false \}\);[\s\S]*updateParamDirtyState\(store\);/);
   });
 
-  it('renders low-emphasis advanced template and diagnostics disclosures after the main param groups', () => {
+  it('renders one advanced template editor section after the main param groups and nests the experimental tools inside it', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
     const block = source.slice(
       source.lastIndexOf('async function renderDynamicParamsPage()'),
@@ -217,7 +221,8 @@ describe('params.js modern runtime smoke', () => {
     expect(block).toMatch(/const diskRenderState = buildRenderableParamState\(diskFlat\);/);
     expect(block).toMatch(/const renderState = buildRenderableParamState\(activeSnapshot\.flat\);/);
     expect(block).toMatch(/const groups = buildParamGroupSections\(renderState\.flat\);/);
-    expect(block).toMatch(/\$\{renderParamGroup\('advanced', groups\.advanced\)\}[\s\S]*\$\{renderParamDisclosureSection\(buildAdvancedTemplateDisclosure\(renderState\.flat\)\)\}[\s\S]*\$\{renderParamDisclosureSection\(buildTowerPositionDisclosure\(renderState\.flat\)\)\}[\s\S]*\$\{renderParamDisclosureSection\(buildDiagnosticsDisclosure\(renderState\.flat, presetPath, fileName\)\)\}/);
+    expect(block).toMatch(/const advancedTemplateEditorMarkup = renderAdvancedTemplateEditorSection\(renderState\.flat, presetPath, fileName\);/);
+    expect(block).toMatch(/\$\{advancedSectionMarkup\}[\s\S]*\$\{advancedTemplateEditorMarkup\}/);
   });
 
   it('coerces advanced template fields through keyed editor helpers so line-array templates round-trip to JSON', () => {
@@ -263,13 +268,14 @@ describe('params.js modern runtime smoke', () => {
     expect(applyBlock).toMatch(/status\.textContent = checkbox\.checked \? '已开启' : '已关闭';/);
   });
 
-  it('defines shared disclosure helpers and template defaults for the bottom params tools', () => {
+  it('defines shared compact disclosure helpers and template defaults for the advanced editor section', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
 
     expect(source).toMatch(/const PARAM_TEMPLATE_FIELD_ORDER = \[/);
     expect(source).toMatch(/function buildRenderableParamState\(flatData = \{\}\) \{/);
-    expect(source).toMatch(/function renderParamDisclosureSection\(section\) \{/);
-    expect(source).toMatch(/<details class="params-disclosure params-disclosure-subtle" data-disclosure-id="/);
+    expect(source).toMatch(/function renderCompactParamToolDisclosure\(section, options = \{\}\) \{/);
+    expect(source).toMatch(/function renderAdvancedTemplateEditorSection\(flatData, presetPath, fileName\) \{/);
+    expect(source).toMatch(/<details class="params-disclosure params-disclosure-subtle params-tool-disclosure" data-disclosure-id="/);
   });
 
   it('keeps tower-only compatibility fields internal and does not expose a public lollipop selector', () => {
@@ -336,7 +342,7 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/id: 'official-front-strip'/);
     expect(source).toMatch(/id: 'official-front-hook'/);
     expect(source).toMatch(/data-tower-dead-zones="/);
-    expect(source).toMatch(/tower-position-canvas tower-position-canvas--\$\{escapeParamHtml\(metrics\.boardStyle\)\}/);
+    expect(source).toMatch(/<div class="tower-position-canvas" data-tower-canvas>/);
     expect(source).toMatch(/const visualDeadZones = \[\.\.\.metrics\.deadZones\]\.sort\(\(left, right\) => getTowerDeadZoneRenderPriority\(left\) - getTowerDeadZoneRenderPriority\(right\)\);/);
     expect(source).toMatch(/tower-dead-zone tower-dead-zone--\$\{escapeParamHtml\(zone\.kind \|\| 'safety'\)\}/);
     expect(source).toMatch(/tower-position-legend/);
@@ -352,10 +358,11 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/if \(normalizedTower\) \{/);
   });
 
-  it('maps the tower preview to a bottom-left bed origin while reserving a consistent visual inset for both rendering and pointer input', () => {
+  it('maps the tower preview directly to the bottom-left bed origin without a hidden inset that distorts edge spacing', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
 
-    expect(source).toMatch(/const TOWER_CANVAS_EDGE_INSET_PERCENT = 5;/);
+    expect(source).toMatch(/const TOWER_CANVAS_EDGE_INSET_PERCENT = 0;/);
+    expect(source).not.toMatch(/const TOWER_CANVAS_EDGE_INSET_PERCENT = 5;/);
     expect(source).toMatch(/function normalizeTowerCanvasAxisPercent\(normalized\) \{/);
     expect(source).toMatch(/function denormalizeTowerCanvasAxisPercent\(percent\) \{/);
     expect(source).toMatch(/function getTowerCanvasTopPercent\(y, metrics\) \{/);
@@ -372,13 +379,18 @@ describe('params.js modern runtime smoke', () => {
   it('renders footprint-based tower occupancy so edge placement reflects the actual tower size instead of only the anchor point', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
 
-    expect(source).toMatch(/const safeAreaBounds = buildTowerPreviewBounds\(/);
-    expect(source).toMatch(/const safeFootprint = resolveTowerEditorSafeFootprint\(flatData\);/);
-    expect(source).toMatch(/range\.maxX \+ safeFootprint\.maxXOffset/);
     expect(source).toMatch(/const previewFootprint = resolveTowerPreviewFootprint\(flatData\);/);
+    expect(source).toMatch(/const footprintBounds = buildTowerPreviewVisualBounds\(/);
+    expect(source).toMatch(/const footprintStyle = getTowerCanvasRectPercent\(footprintBounds, metrics\);/);
+    expect(source).not.toMatch(/const safeAreaBounds = buildTowerPreviewBounds\(/);
     expect(source).toMatch(/const TOWER_EDITOR_VISUAL_SCALE = 1;/);
     expect(source).toMatch(/const TOWER_EDITOR_VISUAL_MIN_SIZE = 20;/);
     expect(source).toMatch(/displayWidth: roundTowerEditorCoordinate\(displayWidth\),/);
+    expect(source).toMatch(/minXOffset: roundTowerEditorCoordinate\(0\),/);
+    expect(source).toMatch(/maxXOffset: roundTowerEditorCoordinate\(width\),/);
+    expect(source).toMatch(/minYOffset: roundTowerEditorCoordinate\(0\),/);
+    expect(source).toMatch(/maxYOffset: roundTowerEditorCoordinate\(depth\),/);
+    expect(source).not.toMatch(/anchorCenterOffsetX/);
     expect(source).toMatch(/displayMinXOffset:/);
     expect(source).toMatch(/function shiftTowerPreviewAxisIntoBounds\(min, max, boundsMin, boundsMax\) \{/);
     expect(source).toMatch(/function buildTowerPreviewVisualBounds\(minX, maxX, minY, maxY, metrics = null\) \{/);
@@ -391,7 +403,8 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/data-tower-footprint-geometry="/);
     expect(source).toMatch(/data-tower-handle/);
     expect(source).toMatch(/data-tooltip-anchor-align="center"/);
-    expect(source).toMatch(/<span class="tower-footprint-label">[^<]+<\/span>/);
+    expect(source).toMatch(/<span class="tower-footprint-label">塔<\/span>/);
+    expect(source).not.toMatch(/class="tower-position-handle"/);
   });
 
   it('snaps tower placement editing to integer coordinates while still allowing geometry-driven footprint growth', () => {
@@ -420,6 +433,15 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/input\.dataset\.towerCoordinateInput === 'y' \? editor\.dataset\.towerY : editor\.dataset\.towerX/);
   });
 
+  it('describes tower X and Y as the visible lower-left corner so preview math matches the user-facing coordinates', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+
+    expect(source).toMatch(/'wiping\.wiper_x': \{ label: '擦料塔左下角 X'/);
+    expect(source).toMatch(/'wiping\.wiper_y': \{ label: '擦料塔左下角 Y'/);
+    expect(source).toMatch(/擦料塔左下角的 X 坐标/);
+    expect(source).toMatch(/擦料塔左下角的 Y 坐标/);
+  });
+
   it('keeps restore-defaults on the shared saved-state path before re-rendering the params page', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
     const block = source.slice(
@@ -445,8 +467,7 @@ describe('params.js modern runtime smoke', () => {
     );
 
     expect(historyBlock).toMatch(/store\.history = \[nextSnapshot\];[\s\S]*store\.index = 0;/);
-    expect(historyBlock).toMatch(/store\.savedFullSerialized = serializeParamFullState\(persistedFlatState\);/);
-    expect(historyBlock).toMatch(/store\.dirty = false;[\s\S]*updateParamDirtyState\(store\);/);
+    expect(historyBlock).toMatch(/markParamStoreSnapshotSaved\(store, nextSnapshot\);[\s\S]*updateParamDirtyState\(store\);/);
     expect(restoreBlock).toMatch(/const restoredStore = restoredState\.store;/);
     expect(restoreBlock).toMatch(/clearParamsSaveButtonFeedback\(saveBtn\);[\s\S]*delete saveBtn\.dataset\.isSaving;[\s\S]*updateParamDirtyUI\(restoredStore\);/);
   });
@@ -612,13 +633,16 @@ describe('params.js modern runtime smoke', () => {
     expect(styleSource).toMatch(/\.tower-position-canvas \{[\s\S]*width: min\(100%, clamp\(300px, 56vh, 520px\)\);/);
     expect(styleSource).toMatch(/\.tower-position-canvas \{[\s\S]*overflow: hidden;/);
     expect(styleSource).toMatch(/\.tower-position-canvas \{[\s\S]*margin: 0 auto;/);
+    expect(styleSource).toMatch(/\.tower-position-canvas \{[\s\S]*border: 1\.5px dashed rgba\(34, 197, 94, 0\.72\);/);
+    expect(styleSource).toMatch(/\.tower-position-canvas \{[\s\S]*box-shadow: none;/);
   });
 
-  it('centers the tower preview block label so the enlarged visual footprint is easier to drag and read', () => {
+  it('centers the tower preview block label while keeping the tower body itself visually prominent', () => {
     const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
 
-    expect(styleSource).toMatch(/\.tower-footprint \{[\s\S]*display: grid;[\s\S]*place-items: center;[\s\S]*border-radius: 18px;/);
-    expect(styleSource).toMatch(/\.tower-footprint-label \{[\s\S]*padding: 6px 10px;[\s\S]*font-size: 12px;[\s\S]*text-align: center;[\s\S]*pointer-events: none;/);
+    expect(styleSource).toMatch(/\.tower-footprint \{[\s\S]*display: grid;[\s\S]*place-items: center;[\s\S]*border-radius: 12px;[\s\S]*border: 2\.5px solid rgba\(59, 130, 246, 0\.92\);/);
+    expect(styleSource).toMatch(/\.tower-footprint-label \{[\s\S]*padding: 0;[\s\S]*background: transparent;[\s\S]*font-size: 14px;[\s\S]*text-align: center;[\s\S]*pointer-events: none;/);
+    expect(styleSource).not.toMatch(/\.tower-position-handle \{/);
   });
 
   it('styles the tower coordinate toolbar as editable integer chips with inline warning feedback and floating drag tooltip text', () => {
@@ -654,13 +678,35 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/const navItems = nav\?\.querySelectorAll\('\.params-nav-item'\) \|\| \[\];/);
     expect(source).toMatch(/function initParamsSectionNav\(\) \{/);
     expect(source).toMatch(/renderParamsSectionNav\(groups\);[\s\S]*initParamsSectionNav\(\);/);
-    expect(source).toMatch(/<section id="params-section-\$\{escapeParamHtml\(groupKey\)\}" class="params-section params-group-section">/);
+    expect(source).toMatch(/<section id="params-section-\$\{escapeParamHtml\(groupKey\)\}" class="params-section params-group-preview-section">/);
     expect(styleSource).toMatch(/\.params-section-nav \{/);
     expect(styleSource).toMatch(/\.params-nav-item \{/);
     expect(styleSource).toMatch(/\.params-nav-item\.active \{/);
   });
 
-  it('renders wipe tower geometry as a dedicated wiping sub-card with a slanted-outer-wall toggle that reveals its child fields only when enabled', () => {
+  it('uses one shared preview-group renderer across the main params sections and a single advanced editor section below them', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
+
+    expect(source).toMatch(/function renderPreviewParamGroup\(groupKey, cards, options = \{\}\) \{/);
+    expect(source).toMatch(/<section id="params-section-\$\{escapeParamHtml\(groupKey\)\}" class="params-section params-group-preview-section">/);
+    expect(source).toMatch(/<div class="params-group-preview-head">/);
+    expect(source).toMatch(/<div class="params-settings-panel">/);
+    expect(source).toMatch(/const metaSectionMarkup = renderPreviewParamGroup\('meta', groups\.meta\);/);
+    expect(source).toMatch(/const toolheadSectionMarkup = renderPreviewParamGroup\('toolhead', groups\.toolhead\);/);
+    expect(source).toMatch(/const wipingSectionMarkup = renderPreviewParamGroup\('wiping', groups\.wiping\);/);
+    expect(source).toMatch(/const mountSectionMarkup = renderPreviewParamGroup\('mount', groups\.mount\);/);
+    expect(source).toMatch(/const unmountSectionMarkup = renderPreviewParamGroup\('unmount', groups\.unmount\);/);
+    expect(source).toMatch(/const advancedSectionMarkup = renderPreviewParamGroup\('advanced', groups\.advanced\);/);
+    expect(source).toMatch(/const advancedTemplateEditorMarkup = renderAdvancedTemplateEditorSection\(renderState\.flat, presetPath, fileName\);/);
+    expect(styleSource).toMatch(/\.params-group-preview-section \{/);
+    expect(styleSource).toMatch(/\.params-group-preview-title \{/);
+    expect(styleSource).toMatch(/\.params-settings-panel \{/);
+    expect(styleSource).toMatch(/\.params-settings-panel > \.param-row \{/);
+    expect(styleSource).toMatch(/\.params-group-preview-extra \{/);
+  });
+
+  it('moves wipe tower geometry into the unified advanced editor experimental tools and reveals slanted controls only when enabled', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
     const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
 
@@ -673,15 +719,100 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/'wiping\.tower_slanted_outer_wall_enabled'/);
     expect(source).toMatch(/'wiping\.tower_slanted_outer_wall_width'/);
     expect(source).toMatch(/'wiping\.tower_slanted_outer_wall_depth'/);
-    expect(source).toMatch(/function buildWipeTowerGeometryCard\(flatData = \{\}\) \{/);
+    expect(source).toMatch(/function buildPreviewWipeTowerGeometryTool\(flatData = \{\}\) \{/);
     expect(source).toMatch(/data-tower-advanced-toggle="slanted-outer-wall"/);
     expect(source).toMatch(/data-tower-advanced-panel="slanted-outer-wall"/);
     expect(source).toMatch(/function syncTowerAdvancedPanels\(scope = document\) \{/);
     expect(source).toMatch(/syncTowerAdvancedPanels\(container\);/);
-    expect(source).toMatch(/renderParamGroup\('wiping', groups\.wiping, \{ extraContent: buildWipeTowerGeometryCard\(renderState\.flat\) \}\)/);
-    expect(styleSource).toMatch(/\.params-inline-card \{/);
+    expect(source).toMatch(/const towerGeometryTool = buildPreviewWipeTowerGeometryTool\(flatData\);/);
+    expect(source).toMatch(/renderCompactParamToolDisclosure\(towerGeometryTool\)/);
+    expect(styleSource).toMatch(/\.params-inline-preview \{/);
+    expect(styleSource).toMatch(/\.params-tool-disclosure \{/);
     expect(styleSource).toMatch(/\.params-inline-subpanel \{/);
     expect(styleSource).toMatch(/\.params-inline-subpanel\.hidden \{/);
+  });
+
+  it('keeps a dedicated current draft baseline in the params store so restore-defaults can atomically return to clean', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function getCurrentParamStoreSnapshot('),
+      source.lastIndexOf('function getParamsSaveButtonLabel(')
+    );
+    const ensureBlock = source.slice(
+      source.lastIndexOf('function ensureParamStore('),
+      source.lastIndexOf('function collectParamModesFromDom(')
+    );
+
+    expect(block).toMatch(/function getCurrentParamStoreSnapshot\(store = getActiveParamStore\(\)\) \{/);
+    expect(block).toMatch(/function replaceCurrentParamStoreSnapshot\(store, snapshot\) \{/);
+    expect(block).toMatch(/store\.currentFullSerialized = serializeParamFullState\(nextSnapshot\.flat\);/);
+    expect(block).toMatch(/function markParamStoreSnapshotSaved\(store, snapshot = getCurrentParamStoreSnapshot\(store\)\) \{/);
+    expect(block).toMatch(/store\.savedFullSerialized = serializeParamFullState\(nextSnapshot\.flat\);/);
+    expect(block).toMatch(/store\.currentFullSerialized = store\.savedFullSerialized;/);
+    expect(block).toMatch(/function refreshParamStoreDirtyFlag\(store = getActiveParamStore\(\)\) \{/);
+    expect(ensureBlock).toMatch(/currentFullSerialized: serializeParamFullState\(flatState\),/);
+  });
+
+  it('computes params dirty state from the active store snapshot instead of DOM readback drift', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function updateParamDirtyState('),
+      source.lastIndexOf('function hasUnsavedParamChanges(')
+    );
+
+    expect(block).toMatch(/refreshParamStoreDirtyFlag\(store\);/);
+    expect(block).not.toMatch(/collectParamFullStateFromDom\(\)/);
+    expect(block).not.toMatch(/const currentSerialized = canReadDom/);
+  });
+
+  it('re-baselines clean params renders to the canonical active snapshot before the final dirty refresh', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('async function renderDynamicParamsPage()'),
+      source.lastIndexOf('function coerceParamValue(')
+    );
+
+    expect(block).toMatch(/markParamStoreSnapshotSaved\(store, diskSnapshot\);/);
+    expect(block).toMatch(/replaceCurrentParamStoreSnapshot\(store, activeSnapshot\);/);
+    expect(block).toMatch(/if \(!store\.dirty\) \{[\s\S]*markParamStoreSnapshotSaved\(store, activeSnapshot\);[\s\S]*\}/);
+  });
+
+  it('marks saved params from the tracked snapshot flat state instead of re-reading DOM during save completion', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function markActiveParamSnapshotSaved('),
+      source.lastIndexOf('function replaceActiveParamStoreWithPersistedState(')
+    );
+
+    expect(block).toMatch(/const targetSnapshot = snapshot \|\| getCurrentParamStoreSnapshot\(store\);/);
+    expect(block).toMatch(/markParamStoreSnapshotSaved\(store, targetSnapshot\);/);
+    expect(block).not.toMatch(/collectParamFullStateFromDom\(store\)/);
+  });
+
+  it('removes dead params-page history preview helpers that no longer have any runtime callers', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+
+    expect(source).not.toContain('async function legacySaveAllDynamicParams(');
+    expect(source).not.toContain('function applySnapshotModePreview(');
+    expect(source).not.toContain('function isFocusVisibleForPreview(');
+    expect(source).not.toContain('function restoreParamFocus(');
+    expect(source).not.toContain('function stepGcodeHistory(');
+    expect(source).not.toContain('function pushParamSnapshotToHistory(');
+  });
+
+  it('re-syncs checkbox and gcode-mode interactions through shared snapshot capture before dirty UI updates', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    const modeBlock = source.slice(
+      source.lastIndexOf('function toggleGcodeMode('),
+      source.lastIndexOf('async function renderDynamicParamsPage()')
+    );
+    const bindBlock = source.slice(
+      source.lastIndexOf('function bindParamEditors()'),
+      source.lastIndexOf('window.renderDynamicParamsPage = renderDynamicParamsPage;')
+    );
+
+    expect(modeBlock).toMatch(/rememberParamSnapshot\(\);[\s\S]*updateParamDirtyState\(\);/);
+    expect(bindBlock).toMatch(/if \(checkbox\) \{[\s\S]*rememberParamSnapshot\(\);[\s\S]*updateParamDirtyState\(\);[\s\S]*\}/);
   });
 });
 

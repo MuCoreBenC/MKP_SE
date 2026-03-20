@@ -3,7 +3,7 @@ window.presetCache = window.presetCache || { path: null, data: null, timestamp: 
 const PARAM_GROUP_META = {
   meta: { title: '预设信息', desc: '识别当前预设的版本、机型和显示名。', icon: 'info' },
   toolhead: { title: '工具头参数', desc: '控制胶笔速度、三轴补偿和工具头动作。', icon: 'toolhead' },
-  wiping: { title: '擦嘴策略', desc: '控制擦嘴塔、擦嘴组件以及支撑相关策略。', icon: 'wiping' },
+  wiping: { title: '擦料塔策略', desc: '控制擦料塔、工具头收放以及支撑相关策略。', icon: 'wiping' },
   mount: { title: '工具头展开 G-code', desc: '默认展示完整文本，支持切换到逐行精修模式。', icon: 'mount' },
   unmount: { title: '工具头收起 G-code', desc: '默认展示完整文本，支持切换到逐行精修模式。', icon: 'unmount' },
   advanced: { title: '扩展参数', desc: '当前 JSON 中存在但未分类的高级字段。', icon: 'advanced' }
@@ -77,15 +77,13 @@ const TOWER_EDITOR_FOOTPRINT = {
 };
 
 const TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS = {
-  anchorCenterOffsetX: 15,
-  anchorCenterOffsetY: 15,
   width: 20,
   depth: 20
 };
 
 const TOWER_EDITOR_VISUAL_SCALE = 1;
 const TOWER_EDITOR_VISUAL_MIN_SIZE = 20;
-const TOWER_CANVAS_EDGE_INSET_PERCENT = 5;
+const TOWER_CANVAS_EDGE_INSET_PERCENT = 0;
 
 const BAMBU_X1_P1_FRONT_DEAD_ZONES = Object.freeze([
   Object.freeze({ id: 'mkp-safety', label: 'MKP 安全限制', kind: 'safety', minX: 6, maxX: 41, minY: 6, maxY: 52 }),
@@ -128,8 +126,8 @@ const PARAM_FIELD_META = {
   'toolhead.offset.y': { label: 'Y 轴补偿', desc: '笔尖相对喷嘴的 Y 偏移，影响前后方向对位。', unit: 'mm', group: 'toolhead' },
   'toolhead.offset.z': { label: 'Z 轴高度差', desc: '笔尖高度差，直接影响涂胶高度和碰撞风险。', unit: 'mm', group: 'toolhead' },
   'toolhead.custom_mount_gcode': { label: '展开动作文本', desc: '控制工具头弹出、锁定或准备动作。', type: 'gcode', group: 'mount' },
-  'toolhead.custom_unmount_gcode': { label: '收起动作文本', desc: '控制工具头收回、擦嘴和退出动作。', type: 'gcode', group: 'unmount' },
-  ['wiping.have_wiping_components']: { label: '使用擦嘴塔', desc: '开启后改为打印擦嘴塔；关闭时按擦嘴组件路径处理。字段名虽然叫 components，但原版逻辑实际控制的是擦嘴塔方案。', type: 'boolean', group: 'wiping' },
+  'toolhead.custom_unmount_gcode': { label: '收起动作文本', desc: '控制工具头收回、擦料收尾和退出动作。', type: 'gcode', group: 'unmount' },
+  ['wiping.have_wiping_components']: { label: '使用擦料塔', desc: '开启后改为打印擦料塔；关闭时按旧字段兼容路径处理。字段名虽然叫 components，但当前逻辑实际控制的是擦料塔方案。', type: 'boolean', group: 'wiping' },
   ['wiping.switch_tower_type']: {
     label: '擦料塔模式',
     desc: '对应 Python 的 Switch_Tower_Type。默认使用擦料塔慢线；切到棒棒糖时改为快线恢复模式。',
@@ -140,9 +138,9 @@ const PARAM_FIELD_META = {
       { value: 2, label: '棒棒糖（快线）' }
     ]
   },
-  'wiping.wiper_x': { label: '擦嘴起点 X', desc: '擦嘴塔或擦嘴区域的 X 起始坐标，需要避开模型区域。', unit: 'mm', group: 'wiping' },
-  'wiping.wiper_y': { label: '擦嘴起点 Y', desc: '擦嘴塔或擦嘴区域的 Y 起始坐标，需要避开模型区域。', unit: 'mm', group: 'wiping' },
-  'wiping.wipetower_speed': { label: '擦嘴塔速度', desc: '擦嘴塔打印速度，过快可能影响稳定性。', unit: 'mm/s', group: 'wiping' },
+  'wiping.wiper_x': { label: '擦料塔左下角 X', desc: '擦料塔左下角的 X 坐标，需要避开模型区域。', unit: 'mm', group: 'wiping' },
+  'wiping.wiper_y': { label: '擦料塔左下角 Y', desc: '擦料塔左下角的 Y 坐标，需要避开模型区域。', unit: 'mm', group: 'wiping' },
+  'wiping.wipetower_speed': { label: '擦料塔速度', desc: '擦料塔打印速度，过快可能影响稳定性。', unit: 'mm/s', group: 'wiping' },
   'wiping.nozzle_cooling_flag': { label: '涂胶时降温', desc: '控制涂胶期间是否额外执行喷嘴降温逻辑。', type: 'boolean', group: 'wiping' },
   'wiping.iron_apply_flag': { label: '缩小涂胶区域', desc: '原版注释为最小化涂胶区域，通常用于配合熨烫表面优化支撑面表现。', type: 'boolean', group: 'wiping' },
   'wiping.user_dry_time': { label: '额外干燥时间', desc: '在流程里增加等待干燥时间，单位为秒。', unit: '秒', group: 'wiping' },
@@ -157,15 +155,15 @@ const PARAM_FIELD_META = {
   'wiping.tower_slanted_outer_wall_width': { label: '斜肋外墙宽度', desc: '在外墙基础上继续增加 X 向的斜肋外扩。关闭开关时不会参与生成。', unit: 'mm', group: 'wiping' },
   'wiping.tower_slanted_outer_wall_depth': { label: '斜肋外墙深度', desc: '在外墙基础上继续增加 Y 向的斜肋外扩。关闭开关时不会参与生成。', unit: 'mm', group: 'wiping' },
   'templates.wipingGcode': {
-    label: '擦嘴塔路径模板',
-    desc: '底层 JS engine 使用的 templates.wipingGcode。通常无需修改，只有想覆盖默认擦嘴塔路径时再展开编辑。',
+    label: '擦料塔路径模板',
+    desc: '底层 JS engine 使用的 templates.wipingGcode。通常无需修改，只有想覆盖默认擦料塔路径时再展开编辑。',
     type: 'gcode',
     group: 'advancedTemplates',
     valueShape: 'stringArray'
   },
   'templates.towerBaseLayerGcode': {
-    label: '擦嘴塔首层模板',
-    desc: '底层 JS engine 使用的 templates.towerBaseLayerGcode。用于生成擦嘴塔首层路径，修改后会随当前 preset 保存。',
+    label: '擦料塔首层模板',
+    desc: '底层 JS engine 使用的 templates.towerBaseLayerGcode。用于生成擦料塔首层路径，修改后会随当前 preset 保存。',
     type: 'gcode',
     group: 'advancedTemplates',
     valueShape: 'stringArray'
@@ -317,6 +315,50 @@ function getActiveParamStore() {
   return getParamStore(paramEditorSession.activePath);
 }
 
+function getCurrentParamStoreSnapshot(store = getActiveParamStore()) {
+  if (!store?.history?.length) return null;
+  const index = Math.max(0, Math.min(store.index || 0, store.history.length - 1));
+  return store.history[index] || null;
+}
+
+function replaceCurrentParamStoreSnapshot(store, snapshot) {
+  if (!store || !snapshot) return null;
+
+  const nextSnapshot = createParamSnapshot(snapshot.flat, snapshot.modes, snapshot.focus);
+  if (!Array.isArray(store.history) || !store.history.length) {
+    store.history = [nextSnapshot];
+    store.index = 0;
+  } else {
+    const nextIndex = Math.max(0, Math.min(store.index || 0, store.history.length - 1));
+    store.index = nextIndex;
+    store.history[nextIndex] = nextSnapshot;
+  }
+
+  store.currentFullSerialized = serializeParamFullState(nextSnapshot.flat);
+  store.lastFocus = cloneParamFocus(nextSnapshot.focus || store.lastFocus);
+  return nextSnapshot;
+}
+
+function markParamStoreSnapshotSaved(store, snapshot = getCurrentParamStoreSnapshot(store)) {
+  if (!store || !snapshot) return null;
+
+  const nextSnapshot = replaceCurrentParamStoreSnapshot(store, snapshot);
+  store.savedSerialized = serializeParamSnapshot(nextSnapshot);
+  store.savedFullSerialized = serializeParamFullState(nextSnapshot.flat);
+  store.currentFullSerialized = store.savedFullSerialized;
+  store.dirty = false;
+  return nextSnapshot;
+}
+
+function refreshParamStoreDirtyFlag(store = getActiveParamStore()) {
+  if (!store) return false;
+
+  const currentSnapshot = getCurrentParamStoreSnapshot(store);
+  store.currentFullSerialized = serializeParamFullState(currentSnapshot?.flat || {});
+  store.dirty = store.currentFullSerialized !== (store.savedFullSerialized || store.savedSerialized);
+  return store.dirty;
+}
+
 function getParamsSaveButtonLabel(button = document.getElementById('saveParamsBtn')) {
   return button?.querySelector('.params-save-label') || null;
 }
@@ -435,17 +477,7 @@ function updateParamDirtyState(store = getActiveParamStore()) {
     return false;
   }
 
-  const paramsPage = document.getElementById('page-params');
-  const canReadDom = store.path === paramEditorSession.activePath
-    && paramsPage
-    && !paramsPage.classList.contains('hidden')
-    && document.querySelector('.dynamic-param-input[data-json-key]');
-
-  const currentSerialized = canReadDom
-    ? serializeParamFullState(collectParamFullStateFromDom())
-    : (store.savedFullSerialized || store.savedSerialized);
-
-  store.dirty = currentSerialized !== (store.savedFullSerialized || store.savedSerialized);
+  refreshParamStoreDirtyFlag(store);
   updateParamDirtyUI(store);
   return store.dirty;
 }
@@ -466,6 +498,7 @@ function ensureParamStore(path, flatState) {
     index: 0,
     savedSerialized: serialized,
     savedFullSerialized: serializeParamFullState(flatState),
+    currentFullSerialized: serializeParamFullState(flatState),
     dirty: false,
     lastFocus: cloneParamFocus(snapshot.focus)
   };
@@ -525,146 +558,6 @@ function captureParamFocus() {
   return null;
 }
 
-function getParamScrollContainer(element) {
-  return element?.closest?.('.page-content') || document.querySelector('#page-params .page-content') || null;
-}
-
-function getSelectionPreviewScrollTop(input, position = 0) {
-  if (!input || input.tagName !== 'TEXTAREA') return 0;
-  const style = window.getComputedStyle(input);
-  const lineHeight = parseFloat(style.lineHeight) || 22;
-  const beforeText = String(input.value || '').slice(0, Math.max(0, position));
-  const lineIndex = beforeText.split('\n').length - 1;
-  const targetTop = (lineIndex * lineHeight) - (input.clientHeight / 2) + (lineHeight * 1.5);
-  const maxScrollTop = Math.max(0, input.scrollHeight - input.clientHeight);
-  return Math.max(0, Math.min(maxScrollTop, targetTop));
-}
-
-function applySelectionPreview(element, focus) {
-  if (!element || !focus) return;
-  if (typeof element.setSelectionRange === 'function') {
-    const start = focus.start ?? 0;
-    const end = focus.end ?? start;
-    element.setSelectionRange(start, end);
-  }
-
-  if (element.tagName === 'TEXTAREA') {
-    element.scrollTop = getSelectionPreviewScrollTop(element, focus.start ?? 0);
-  }
-}
-
-function applySnapshotModePreview(snapshot) {
-  document.querySelectorAll('[data-gcode-mode]').forEach((shell) => {
-    const key = shell.getAttribute('data-json-key');
-    const mode = snapshot?.modes?.[key];
-    if (!mode) return;
-
-    shell.dataset.gcodeMode = mode;
-    const rawShell = shell.querySelector('.gcode-raw-shell');
-    const structuredShell = shell.querySelector('.gcode-structured-shell');
-    if (rawShell) rawShell.classList.toggle('hidden', mode !== 'raw');
-    if (structuredShell) structuredShell.classList.toggle('hidden', mode !== 'structured');
-
-    const card = shell.closest('[data-param-gcode]');
-    card?.querySelectorAll('[data-mode-btn]').forEach((item) => {
-      item.classList.toggle('is-active', item.getAttribute('data-mode-btn') === mode);
-    });
-  });
-}
-
-function resolveParamFocusTarget(focus) {
-  if (!focus?.key) return null;
-
-  if (focus.type === 'field') {
-    const element = document.querySelector(`.dynamic-param-input[data-json-key="${CSS.escape(focus.key)}"]`);
-    return element ? { element, focus } : null;
-  }
-
-  const shell = document.querySelector(`[data-gcode-mode][data-json-key="${CSS.escape(focus.key)}"]`);
-  if (!shell) return null;
-
-  if (focus.type === 'gcode-raw') {
-    const element = shell.querySelector('[data-gcode-raw]');
-    return element ? { element, focus } : null;
-  }
-
-  if (focus.type === 'gcode-line') {
-    const rows = Array.from(shell.querySelectorAll('.gcode-line-row'));
-    const row = rows.find((item) => Number(item.dataset.lineIndex) === Number(focus.lineIndex || 0)) || rows[Math.min(rows.length - 1, Math.max(0, Number(focus.lineIndex || 0)))];
-    const element = row?.querySelector('[data-gcode-line]') || shell.querySelector('[data-gcode-raw]') || shell;
-    return element ? { element, focus } : null;
-  }
-
-  return null;
-}
-
-function isElementVisibleInParamViewport(element) {
-  if (!element) return false;
-  const scrollContainer = getParamScrollContainer(element);
-  const rect = element.getBoundingClientRect();
-
-  if (!scrollContainer) {
-    return rect.top >= 0 && rect.bottom <= window.innerHeight;
-  }
-
-  const containerRect = scrollContainer.getBoundingClientRect();
-  return rect.top >= containerRect.top + 12 && rect.bottom <= containerRect.bottom - 12;
-}
-
-function isFocusVisibleForPreview(focus) {
-  const target = resolveParamFocusTarget(focus);
-  if (!target?.element) return true;
-  if (!isElementVisibleInParamViewport(target.element)) return false;
-
-  if (target.element.tagName === 'TEXTAREA') {
-    const expectedTop = getSelectionPreviewScrollTop(target.element, focus.start ?? 0);
-    return Math.abs((target.element.scrollTop || 0) - expectedTop) < 24;
-  }
-
-  return true;
-}
-
-function withInstantParamScroll(element, callback) {
-  const scrollContainer = getParamScrollContainer(element);
-  const prevBehavior = scrollContainer?.style.scrollBehavior || '';
-  const rootPrevBehavior = document.documentElement.style.scrollBehavior || '';
-  const bodyPrevBehavior = document.body.style.scrollBehavior || '';
-
-  if (scrollContainer) scrollContainer.style.scrollBehavior = 'auto';
-  document.documentElement.style.scrollBehavior = 'auto';
-  document.body.style.scrollBehavior = 'auto';
-
-  try {
-    callback(scrollContainer);
-  } finally {
-    requestAnimationFrame(() => {
-      if (scrollContainer) scrollContainer.style.scrollBehavior = prevBehavior;
-      document.documentElement.style.scrollBehavior = rootPrevBehavior;
-      document.body.style.scrollBehavior = bodyPrevBehavior;
-    });
-  }
-}
-
-function focusElementForHistoryPreview(element) {
-  if (!element) return;
-
-  withInstantParamScroll(element, () => {
-    element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
-    try {
-      element.focus({ preventScroll: true });
-    } catch (error) {
-      element.focus();
-    }
-  });
-}
-
-function restoreParamFocus(focus) {
-  const target = resolveParamFocusTarget(focus);
-  if (!target?.element) return;
-  focusElementForHistoryPreview(target.element);
-  applySelectionPreview(target.element, focus);
-}
-
 function collectParamSnapshotFromDom() {
   return createParamSnapshot(collectParamFullStateFromDom(), collectParamModesFromDom(), captureParamFocus());
 }
@@ -692,6 +585,7 @@ function rememberParamSnapshot(options = {}) {
 
   if (!options.force && nextSerialized === currentSerialized) {
     store.history[store.index].focus = cloneParamFocus(snapshot.focus);
+    store.currentFullSerialized = serializeParamFullState(store.history[store.index].flat);
     updateParamDirtyState(store);
     return snapshot;
   }
@@ -708,6 +602,7 @@ function rememberParamSnapshot(options = {}) {
     }
   }
 
+  store.currentFullSerialized = serializeParamFullState(snapshot.flat);
   updateParamDirtyState(store);
   return snapshot;
 }
@@ -818,7 +713,10 @@ function discardActiveParamChanges() {
     store.history = [createParamSnapshot(current.flat, current.modes, current.focus)];
     store.index = 0;
     store.savedSerialized = serializeParamSnapshot(store.history[0]);
+    store.savedFullSerialized = serializeParamFullState(store.history[0].flat);
   }
+
+  store.currentFullSerialized = store.savedFullSerialized || serializeParamFullState(getCurrentParamStoreSnapshot(store)?.flat || {});
 
   const paramsPage = document.getElementById('page-params');
   if (paramsPage && !paramsPage.classList.contains('hidden')) {
@@ -835,43 +733,8 @@ function discardActiveParamChanges() {
 function markActiveParamSnapshotSaved(snapshot = null) {
   const store = getActiveParamStore();
   if (!store) return;
-  const targetSnapshot = snapshot || store.history[store.index];
-  store.savedSerialized = serializeParamSnapshot(targetSnapshot);
-  store.savedFullSerialized = serializeParamFullState(collectParamFullStateFromDom(store));
-  updateParamDirtyState(store);
-}
-
-function pushParamSnapshotToHistory(snapshot, options = {}) {
-  const store = getActiveParamStore();
-  if (!store || !snapshot) return;
-
-  const nextSnapshot = createParamSnapshot(snapshot.flat, snapshot.modes, snapshot.focus);
-
-  if (options.replaceHistory) {
-    store.history = [nextSnapshot];
-    store.index = 0;
-  } else {
-    store.history = store.history.slice(0, store.index + 1);
-    store.history.push(nextSnapshot);
-    store.index = store.history.length - 1;
-    if (store.history.length > PARAM_HISTORY_LIMIT) {
-      store.history = store.history.slice(store.history.length - PARAM_HISTORY_LIMIT);
-      store.index = store.history.length - 1;
-    }
-  }
-  store.lastFocus = cloneParamFocus(nextSnapshot.focus);
-
-  if (options.markSaved) {
-    store.savedSerialized = serializeParamSnapshot(store.history[store.index]);
-    store.savedFullSerialized = serializeParamFullState(store.history[store.index].flat);
-  }
-
-  if (options.skipDirtySync) {
-    store.dirty = false;
-    updateParamDirtyUI(store);
-    return;
-  }
-
+  const targetSnapshot = snapshot || getCurrentParamStoreSnapshot(store);
+  markParamStoreSnapshotSaved(store, targetSnapshot);
   updateParamDirtyState(store);
 }
 
@@ -892,10 +755,7 @@ function replaceActiveParamStoreWithPersistedState(presetPath, flatState, option
   store.path = presetPath;
   store.history = [nextSnapshot];
   store.index = 0;
-  store.savedSerialized = serializeParamSnapshot(nextSnapshot);
-  store.savedFullSerialized = serializeParamFullState(persistedFlatState);
-  store.dirty = false;
-  store.lastFocus = cloneParamFocus(nextSnapshot.focus);
+  markParamStoreSnapshotSaved(store, nextSnapshot);
   paramEditorSession.activePath = presetPath;
 
   if (options.applyDom) {
@@ -1285,26 +1145,27 @@ function renderParamFieldByKey(key, flatData, options = {}) {
   return createStandardField(key, value, meta, type);
 }
 
-function renderParamGroup(groupKey, cards, options = {}) {
+function renderPreviewParamGroup(groupKey, cards, options = {}) {
   const extraContent = options.extraContent || '';
   if (!cards.length && !extraContent) return '';
 
   const meta = PARAM_GROUP_META[groupKey] || PARAM_GROUP_META.advanced;
-  return `
-    <section id="params-section-${escapeParamHtml(groupKey)}" class="params-section params-group-section">
-      <div class="params-group-head">
-        <div class="params-group-icon">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">${getParamGroupIcon(meta.icon)}</svg>
-        </div>
-        <div>
-          <h3 class="params-group-title">${escapeParamHtml(meta.title)}</h3>
-          <p class="params-group-desc">${escapeParamHtml(meta.desc)}</p>
-        </div>
-      </div>
-      <div class="params-group-list">
+  const panelMarkup = cards.length
+    ? `
+      <div class="params-settings-panel">
         ${cards.join('')}
       </div>
-      ${extraContent}
+    `
+    : '';
+
+  return `
+    <section id="params-section-${escapeParamHtml(groupKey)}" class="params-section params-group-preview-section">
+      <div class="params-group-preview-head">
+        <h3 class="params-group-preview-title">${escapeParamHtml(meta.title)}</h3>
+        <p class="params-group-preview-desc">${escapeParamHtml(meta.desc)}</p>
+      </div>
+      ${panelMarkup}
+      ${extraContent ? `<div class="params-group-preview-extra">${extraContent}</div>` : ''}
     </section>
   `;
 }
@@ -1415,7 +1276,7 @@ function getTowerGeometryBooleanValue(flatData = {}, ...keys) {
   return fallback;
 }
 
-function buildWipeTowerGeometryCard(flatData = {}) {
+function buildPreviewWipeTowerGeometryTool(flatData = {}) {
   const slantedEnabled = getTowerGeometryBooleanValue(
     flatData,
     'wiping.tower_slanted_outer_wall_enabled',
@@ -1425,32 +1286,35 @@ function buildWipeTowerGeometryCard(flatData = {}) {
   );
   const panelClass = slantedEnabled ? 'params-inline-subpanel' : 'params-inline-subpanel hidden';
 
-  return `
-    <div class="params-inline-card" data-inline-card="wipe-tower-geometry">
-      <div class="params-inline-card-head">
-        <div>
-          <div class="params-inline-card-title">高级擦料塔几何</div>
-          <p class="params-inline-card-desc">预览占地、坐标限制和 CLI 生成共用这一组高级塔参数。</p>
+  return {
+    id: 'wipe-tower-geometry',
+    title: '擦料塔几何',
+    desc: '占地、边界和 CLI 生成共用这一组高级塔参数。',
+    content: `
+      <div class="params-inline-preview" data-inline-card="wipe-tower-geometry">
+        <div class="params-settings-panel params-settings-panel-compact">
+          ${renderParamFieldByKey('wiping.tower_width', flatData)}
+          ${renderParamFieldByKey('wiping.tower_depth', flatData)}
+          ${renderParamFieldByKey('wiping.tower_brim_width', flatData)}
+          ${renderParamFieldByKey('wiping.tower_outer_wall_width', flatData)}
+          ${renderParamFieldByKey('wiping.tower_outer_wall_depth', flatData)}
+          ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_enabled', flatData, {
+            booleanOptions: { inputAttrs: 'data-tower-advanced-toggle="slanted-outer-wall"' }
+          })}
+        </div>
+        <div class="${panelClass}" data-tower-advanced-panel="slanted-outer-wall">
+          <div class="params-group-preview-head params-group-preview-head-inline params-group-preview-head-inline-compact">
+            <h4 class="params-group-preview-subtitle">斜肋外墙</h4>
+            <p class="params-group-preview-desc">只有启用后，下面这两项才会参与预览和生成。</p>
+          </div>
+          <div class="params-settings-panel params-settings-panel-compact">
+            ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_width', flatData)}
+            ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_depth', flatData)}
+          </div>
         </div>
       </div>
-      <div class="params-group-list params-group-list-compact">
-        ${renderParamFieldByKey('wiping.tower_width', flatData)}
-        ${renderParamFieldByKey('wiping.tower_depth', flatData)}
-        ${renderParamFieldByKey('wiping.tower_brim_width', flatData)}
-        ${renderParamFieldByKey('wiping.tower_outer_wall_width', flatData)}
-        ${renderParamFieldByKey('wiping.tower_outer_wall_depth', flatData)}
-        ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_enabled', flatData, {
-          booleanOptions: { inputAttrs: 'data-tower-advanced-toggle="slanted-outer-wall"' }
-        })}
-      </div>
-      <div class="${panelClass}" data-tower-advanced-panel="slanted-outer-wall">
-        <div class="params-group-list params-group-list-compact">
-          ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_width', flatData)}
-          ${renderParamFieldByKey('wiping.tower_slanted_outer_wall_depth', flatData)}
-        </div>
-      </div>
-    </div>
-  `;
+    `
+  };
 }
 
 function syncTowerAdvancedPanels(scope = document) {
@@ -1558,18 +1422,22 @@ function buildDiagnosticsPayload(flatData, presetPath, fileName) {
   };
 }
 
-function renderParamDisclosureSection(section) {
+function renderCompactParamToolDisclosure(section, options = {}) {
   if (!section?.content) return '';
 
+  const title = options.title || section.title || '';
+  const desc = options.desc ?? section.desc ?? '';
+  const badge = options.badge ?? section.badge;
+
   return `
-    <details class="params-disclosure params-disclosure-subtle" data-disclosure-id="${escapeParamHtml(section.id || '')}">
-      <summary class="params-disclosure-summary">
-        <div class="params-disclosure-copy">
-          <div class="params-disclosure-title-row">
-            <span class="params-disclosure-title">${escapeParamHtml(section.title || '')}</span>
-            ${section.badge ? `<span class="params-disclosure-badge">${escapeParamHtml(section.badge)}</span>` : ''}
+    <details class="params-disclosure params-disclosure-subtle params-tool-disclosure" data-disclosure-id="${escapeParamHtml(section.id || '')}">
+      <summary class="params-disclosure-summary params-tool-disclosure-summary">
+        <div class="params-tool-disclosure-copy">
+          <div class="params-tool-disclosure-title-row">
+            <span class="params-tool-disclosure-title">${escapeParamHtml(title)}</span>
+            ${badge ? `<span class="params-disclosure-badge">${escapeParamHtml(badge)}</span>` : ''}
           </div>
-          <p class="params-disclosure-desc">${escapeParamHtml(section.desc || '')}</p>
+          ${desc ? `<p class="params-tool-disclosure-desc">${escapeParamHtml(desc)}</p>` : ''}
         </div>
         <span class="params-disclosure-chevron" aria-hidden="true">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1581,6 +1449,39 @@ function renderParamDisclosureSection(section) {
         ${section.content}
       </div>
     </details>
+  `;
+}
+
+function renderAdvancedTemplateEditorSection(flatData, presetPath, fileName) {
+  const towerGeometryTool = buildPreviewWipeTowerGeometryTool(flatData);
+  const towerPositionTool = buildTowerPositionDisclosure(flatData);
+  const diagnosticsTool = buildDiagnosticsDisclosure(flatData, presetPath, fileName);
+  const templateCards = PARAM_TEMPLATE_FIELD_ORDER.map((key) => createGcodeField(key, flatData[key], getParamFieldMeta(key)));
+
+  return `
+    <section class="params-section params-group-preview-section params-advanced-editor-section">
+      <div class="params-group-preview-head">
+        <h3 class="params-group-preview-title">高级模板编辑器</h3>
+        <p class="params-group-preview-desc">模板、实验性工具和诊断信息统一收进这里，避免参数页底部再出现一排独立大标题。</p>
+      </div>
+      <div class="params-group-preview-extra">
+        <div class="params-settings-panel">
+          <div class="params-disclosure-note">
+            修改后会随当前 preset 一起保存到 JSON 的 <code>templates.*</code> 字段，用来覆盖 JS engine 内置模板。
+          </div>
+          ${templateCards.join('')}
+        </div>
+        <div class="params-inline-preview">
+          <div class="params-group-preview-head params-group-preview-head-inline">
+            <h4 class="params-group-preview-subtitle">实验性工具</h4>
+            <p class="params-group-preview-desc">擦料塔几何、位置预览和诊断结果都收在这里，需要时再展开。</p>
+          </div>
+          ${renderCompactParamToolDisclosure(towerGeometryTool)}
+          ${renderCompactParamToolDisclosure(towerPositionTool, { title: '位置预览', desc: '' })}
+          ${renderCompactParamToolDisclosure(diagnosticsTool, { title: '诊断结果', desc: '' })}
+        </div>
+      </div>
+    </section>
   `;
 }
 
@@ -2103,25 +2004,20 @@ function resolveTowerPreviewFootprint(flatData = {}) {
     roundTowerEditorCoordinate(depth * TOWER_EDITOR_VISUAL_SCALE),
     TOWER_EDITOR_VISUAL_MIN_SIZE
   );
-  const halfWidth = width / 2;
-  const halfDepth = depth / 2;
-  const displayHalfWidth = displayWidth / 2;
-  const displayHalfDepth = displayDepth / 2;
-
   return {
     ...geometry,
     width: roundTowerEditorCoordinate(width),
     depth: roundTowerEditorCoordinate(depth),
     displayWidth: roundTowerEditorCoordinate(displayWidth),
     displayDepth: roundTowerEditorCoordinate(displayDepth),
-    minXOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX - halfWidth),
-    maxXOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX + halfWidth),
-    minYOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY - halfDepth),
-    maxYOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY + halfDepth),
-    displayMinXOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX - displayHalfWidth),
-    displayMaxXOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX + displayHalfWidth),
-    displayMinYOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY - displayHalfDepth),
-    displayMaxYOffset: roundTowerEditorCoordinate(TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY + displayHalfDepth)
+    minXOffset: roundTowerEditorCoordinate(0),
+    maxXOffset: roundTowerEditorCoordinate(width),
+    minYOffset: roundTowerEditorCoordinate(0),
+    maxYOffset: roundTowerEditorCoordinate(depth),
+    displayMinXOffset: roundTowerEditorCoordinate(0),
+    displayMaxXOffset: roundTowerEditorCoordinate(displayWidth),
+    displayMinYOffset: roundTowerEditorCoordinate(0),
+    displayMaxYOffset: roundTowerEditorCoordinate(displayDepth)
   };
 }
 
@@ -2134,21 +2030,19 @@ function getTowerPreviewFootprintFromEditor(editor) {
     const parsed = JSON.parse(payload);
     const defaultDisplayWidth = Math.max(TOWER_EDITOR_VISUAL_MIN_SIZE, TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.width * TOWER_EDITOR_VISUAL_SCALE);
     const defaultDisplayDepth = Math.max(TOWER_EDITOR_VISUAL_MIN_SIZE, TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.depth * TOWER_EDITOR_VISUAL_SCALE);
-    const defaultDisplayHalfWidth = defaultDisplayWidth / 2;
-    const defaultDisplayHalfDepth = defaultDisplayDepth / 2;
     return {
       width: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.width) ?? TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.width),
       depth: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.depth) ?? TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.depth),
       displayWidth: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayWidth) ?? defaultDisplayWidth),
       displayDepth: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayDepth) ?? defaultDisplayDepth),
-      minXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.minXOffset) ?? 5),
-      maxXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.maxXOffset) ?? 25),
-      minYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.minYOffset) ?? 5),
-      maxYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.maxYOffset) ?? 25),
-      displayMinXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMinXOffset) ?? (TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX - defaultDisplayHalfWidth)),
-      displayMaxXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMaxXOffset) ?? (TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetX + defaultDisplayHalfWidth)),
-      displayMinYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMinYOffset) ?? (TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY - defaultDisplayHalfDepth)),
-      displayMaxYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMaxYOffset) ?? (TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.anchorCenterOffsetY + defaultDisplayHalfDepth))
+      minXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.minXOffset) ?? 0),
+      maxXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.maxXOffset) ?? (toFiniteTowerNumber(parsed.width) ?? TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.width)),
+      minYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.minYOffset) ?? 0),
+      maxYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.maxYOffset) ?? (toFiniteTowerNumber(parsed.depth) ?? TOWER_EDITOR_VISUAL_FOOTPRINT_DEFAULTS.depth)),
+      displayMinXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMinXOffset) ?? 0),
+      displayMaxXOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMaxXOffset) ?? defaultDisplayWidth),
+      displayMinYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMinYOffset) ?? 0),
+      displayMaxYOffset: roundTowerEditorCoordinate(toFiniteTowerNumber(parsed.displayMaxYOffset) ?? defaultDisplayDepth)
     };
   } catch (_error) {
     return resolveTowerPreviewFootprint({});
@@ -2332,17 +2226,6 @@ function buildTowerPositionDisclosure(flatData) {
   const clampedWiperX = clampTowerEditorValue(metrics.wiperX, range.minX, range.maxX);
   const clampedWiperY = clampTowerEditorValue(metrics.wiperY, range.minY, range.maxY);
   const previewFootprint = resolveTowerPreviewFootprint(flatData);
-  const safeFootprint = resolveTowerEditorSafeFootprint(flatData);
-  const towerLeftPercent = getTowerCanvasLeftPercent(clampedWiperX, metrics);
-  const towerTopPercent = getTowerCanvasTopPercent(clampedWiperY, metrics);
-  const safeAreaBounds = buildTowerPreviewBounds(
-    range.minX + safeFootprint.minXOffset,
-    range.maxX + safeFootprint.maxXOffset,
-    range.minY + safeFootprint.minYOffset,
-    range.maxY + safeFootprint.maxYOffset,
-    metrics
-  );
-  const safeAreaStyle = getTowerCanvasRectPercent(safeAreaBounds, metrics);
   const footprintBounds = buildTowerPreviewVisualBounds(
     clampedWiperX + previewFootprint.displayMinXOffset,
     clampedWiperX + previewFootprint.displayMaxXOffset,
@@ -2379,11 +2262,11 @@ function buildTowerPositionDisclosure(flatData) {
   return {
     id: 'tower-position',
     title: '擦料塔位置预览',
-    desc: '底部展开后可以直接拖动擦料塔，坐标会同步回写到上面的 X / Y 参数框。',
+    desc: '底部展开后可以直接拖动擦料塔，X / Y 表示蓝色方块左下角坐标，并会同步回写到上面的参数框。',
     badge: metrics.boardStyle === 'bambu-x1' ? 'P1 / X1 安全限制' : '实验中',
     content: `
       <div class="params-disclosure-note">
-        红色区域表示不能放置擦料塔，虚线框表示当前允许的安全落点范围。
+        红色区域表示不能放置擦料塔，虚线框表示当前允许的安全落点范围，蓝色方块按左下角坐标显示真实占地。
       </div>
       <div
         class="tower-position-editor"
@@ -2443,12 +2326,8 @@ function buildTowerPositionDisclosure(flatData) {
         <div class="tower-position-legend">
           ${legendMarkup}
         </div>
-        <div class="tower-position-canvas tower-position-canvas--${escapeParamHtml(metrics.boardStyle)}" data-tower-canvas>
+        <div class="tower-position-canvas" data-tower-canvas>
           <div class="tower-bed-grid" aria-hidden="true"></div>
-          <div
-            class="tower-safe-area"
-            style="left:${safeAreaStyle.left}%;top:${safeAreaStyle.top}%;width:${safeAreaStyle.width}%;height:${safeAreaStyle.height}%"
-          ></div>
           ${deadZoneMarkup}
           <div
             class="tower-footprint"
@@ -2456,80 +2335,17 @@ function buildTowerPositionDisclosure(flatData) {
             data-tower-handle
             data-tooltip-anchor-align="center"
             style="left:${footprintStyle.left}%;top:${footprintStyle.top}%;width:${footprintStyle.width}%;height:${footprintStyle.height}%"
-            aria-label="Tower footprint"
-            title="Drag to move the wipe tower"
+            aria-label="擦料塔占地"
+            title="拖动以调整擦料塔位置"
           >
             <span class="tower-footprint-label">塔</span>
           </div>
           <div class="tower-bed-origin">${metrics.bedMinX},${metrics.bedMinY}</div>
           <div class="tower-bed-corner">${metrics.bedMaxX},${metrics.bedMaxY}</div>
-          <button
-            type="button"
-            class="tower-position-handle"
-            data-tower-handle
-            style="left:${towerLeftPercent}%;top:${towerTopPercent}%"
-            aria-label="擦料塔位置"
-            title="拖动以调整擦料塔位置"
-          >
-            <span>塔</span>
-          </button>
         </div>
       </div>
     `
   };
-
-  /*
-  return {
-    id: 'tower-position',
-    title: '擦料塔位置预览',
-    desc: '在底部展开后可直接拖动擦料塔，坐标会同步回写到上面的 X / Y 参数框。',
-    badge: '实验中',
-    content: `
-      <div class="params-disclosure-note">
-        当前版本先提供一个轻量预览拖拽器，用来替代盲填坐标。下一轮会继续补齐安全范围夹取和运行时诊断。
-      </div>
-      <div
-        class="tower-position-editor"
-        data-tower-editor
-        data-tower-x="${escapeParamHtml(metrics.wiperX)}"
-        data-tower-y="${escapeParamHtml(metrics.wiperY)}"
-        data-bed-min-x="${metrics.bedMinX}"
-        data-bed-min-y="${metrics.bedMinY}"
-        data-bed-width="${metrics.bedWidth}"
-        data-bed-depth="${metrics.bedDepth}"
-        data-tower-min-x="${range.minX}"
-        data-tower-max-x="${range.maxX}"
-        data-tower-min-y="${range.minY}"
-        data-tower-max-y="${range.maxY}"
-        data-tower-width="${metrics.towerWidth}"
-        data-tower-depth="${metrics.towerDepth}"
-        data-tower-x-input="wiping.wiper_x"
-        data-tower-y-input="wiping.wiper_y"
-      >
-        <div class="tower-position-toolbar">
-          <div class="tower-position-chip">X <strong data-tower-x-label>${escapeParamHtml(clampedWiperX)}</strong></div>
-          <div class="tower-position-chip">Y <strong data-tower-y-label>${escapeParamHtml(clampedWiperY)}</strong></div>
-          <div class="tower-position-chip">Bed ${metrics.bedWidth} x ${metrics.bedDepth}</div>
-        </div>
-        <div class="tower-position-canvas" data-tower-canvas>
-          <div class="tower-bed-grid" aria-hidden="true"></div>
-          <div class="tower-bed-origin">${metrics.bedMinX},${metrics.bedMinY}</div>
-          <div class="tower-bed-corner">${metrics.bedMaxX},${metrics.bedMaxY}</div>
-          <button
-            type="button"
-            class="tower-position-handle"
-            data-tower-handle
-            style="left:${towerLeftPercent}%;top:${towerTopPercent}%"
-            aria-label="擦料塔位置"
-            title="拖动以调整擦料塔位置"
-          >
-            <span>塔</span>
-          </button>
-        </div>
-      </div>
-    `
-  };
-  */
 }
 
 function updateTowerPositionEditor(editor) {
@@ -2737,7 +2553,7 @@ function refreshTowerPositionDisclosureFromDom() {
     yInput.value = String(renderState.flat['wiping.wiper_y']);
   }
 
-  existingDisclosure.outerHTML = renderParamDisclosureSection(buildTowerPositionDisclosure(renderState.flat));
+  existingDisclosure.outerHTML = renderCompactParamToolDisclosure(buildTowerPositionDisclosure(renderState.flat), { title: '位置预览', desc: '' });
   const nextDisclosure = document.querySelector('[data-disclosure-id="tower-position"]');
   if (nextDisclosure) {
     nextDisclosure.open = wasOpen;
@@ -2956,17 +2772,6 @@ function getGcodeEditorSelection(editor) {
   };
 }
 
-function restoreGcodeEditorSelection(editor, selection = getDefaultGcodeSelection()) {
-  const rows = Array.from(editor.querySelectorAll('.gcode-line-row'));
-  const row = rows[Math.min(selection.lineIndex || 0, Math.max(rows.length - 1, 0))];
-  const input = row?.querySelector('[data-gcode-line]');
-  if (!input) return;
-  const endPos = Math.min(selection.end ?? input.value.length, input.value.length);
-  const startPos = Math.min(selection.start ?? endPos, endPos);
-  input.focus();
-  input.setSelectionRange(startPos, endPos);
-}
-
 function seedGcodeHistory(cardShell, text) {
   gcodeHistoryStore.set(cardShell, {
     stack: [{ text, selection: getDefaultGcodeSelection() }],
@@ -3014,29 +2819,6 @@ function rememberGcodeHistory(cardShell) {
   syncStructuredToRaw(cardShell);
 }
 
-function applyGcodeHistoryState(cardShell, state) {
-  const rawInput = cardShell.querySelector('[data-gcode-raw]');
-  const editor = cardShell.querySelector('[data-gcode-structured]');
-  if (!rawInput || !editor) return;
-
-  const text = normalizeGcodeText(state?.text || '');
-  const lines = text.split('\n');
-  const renderLines = lines.length > 0 ? lines : [''];
-  editor.innerHTML = renderLines.map((line, index) => renderGcodeLineRow(line, index)).join('');
-  renumberGcodeRows(editor);
-  rawInput.value = text;
-  restoreGcodeEditorSelection(editor, state?.selection);
-}
-
-function stepGcodeHistory(cardShell, direction) {
-  const history = ensureGcodeHistory(cardShell);
-  const nextIndex = history.index + direction;
-  if (nextIndex < 0 || nextIndex >= history.stack.length) return false;
-  history.index = nextIndex;
-  applyGcodeHistoryState(cardShell, history.stack[history.index]);
-  return true;
-}
-
 function syncRawToStructured(cardShell, options = {}) {
   const rawInput = cardShell.querySelector('[data-gcode-raw]');
   const editor = cardShell.querySelector('[data-gcode-structured]');
@@ -3068,6 +2850,7 @@ function toggleGcodeMode(button, mode) {
     item.classList.toggle('is-active', item.getAttribute('data-mode-btn') === mode);
   });
 
+  rememberParamSnapshot();
   updateParamDirtyState();
 }
 
@@ -3131,37 +2914,42 @@ async function renderDynamicParamsPage() {
   } else if (!store.dirty && serializeParamSnapshot(store.history[store.index]) !== serializeParamSnapshot(diskSnapshot)) {
     store.history = [diskSnapshot];
     store.index = 0;
-    store.savedSerialized = serializeParamSnapshot(diskSnapshot);
-    store.savedFullSerialized = serializeParamFullState(diskRenderState.flat);
-    store.dirty = false;
-    store.lastFocus = cloneParamFocus(diskSnapshot.focus);
+    markParamStoreSnapshotSaved(store, diskSnapshot);
   }
 
   paramEditorSession.activePath = presetPath;
-  const currentSnapshot = store.history[store.index];
+  const currentSnapshot = getCurrentParamStoreSnapshot(store) || diskSnapshot;
   const activeSnapshot = createParamSnapshot(
     buildRenderableParamState(currentSnapshot.flat).flat,
     currentSnapshot.modes,
     currentSnapshot.focus
   );
-  store.history[store.index] = activeSnapshot;
+  replaceCurrentParamStoreSnapshot(store, activeSnapshot);
+  if (!store.dirty) {
+    markParamStoreSnapshotSaved(store, activeSnapshot);
+  }
 
   const renderState = buildRenderableParamState(activeSnapshot.flat);
   activeParamNumericConstraints = buildParamNumericConstraints(renderState.flat);
   const groups = buildParamGroupSections(renderState.flat);
+  const metaSectionMarkup = renderPreviewParamGroup('meta', groups.meta);
+  const toolheadSectionMarkup = renderPreviewParamGroup('toolhead', groups.toolhead);
+  const wipingSectionMarkup = renderPreviewParamGroup('wiping', groups.wiping);
+  const mountSectionMarkup = renderPreviewParamGroup('mount', groups.mount);
+  const unmountSectionMarkup = renderPreviewParamGroup('unmount', groups.unmount);
+  const advancedSectionMarkup = renderPreviewParamGroup('advanced', groups.advanced);
+  const advancedTemplateEditorMarkup = renderAdvancedTemplateEditorSection(renderState.flat, presetPath, fileName);
   renderParamsSectionNav(groups);
   container.innerHTML = `
     <div class="col-span-full params-shell">
       ${buildParamsSummary(unflattenObject(renderState.flat), fileName)}
-      ${renderParamGroup('meta', groups.meta)}
-      ${renderParamGroup('toolhead', groups.toolhead)}
-      ${renderParamGroup('wiping', groups.wiping, { extraContent: buildWipeTowerGeometryCard(renderState.flat) })}
-      ${renderParamGroup('mount', groups.mount)}
-      ${renderParamGroup('unmount', groups.unmount)}
-      ${renderParamGroup('advanced', groups.advanced)}
-      ${renderParamDisclosureSection(buildAdvancedTemplateDisclosure(renderState.flat))}
-      ${renderParamDisclosureSection(buildTowerPositionDisclosure(renderState.flat))}
-      ${renderParamDisclosureSection(buildDiagnosticsDisclosure(renderState.flat, presetPath, fileName))}
+      ${metaSectionMarkup}
+      ${toolheadSectionMarkup}
+      ${wipingSectionMarkup}
+      ${mountSectionMarkup}
+      ${unmountSectionMarkup}
+      ${advancedSectionMarkup}
+      ${advancedTemplateEditorMarkup}
     </div>
   `;
 
@@ -3198,91 +2986,6 @@ function coerceParamValue(rawValue, input, key = '') {
     } catch (error) {}
   }
   return value;
-}
-
-async function legacySaveAllDynamicParams(options = {}) {
-  const store = getActiveParamStore();
-  if (!store?.dirty) {
-    updateParamDirtyUI(store);
-    return false;
-  }
-
-  const preset = await loadActivePreset();
-  if (!preset) {
-    await MKPModal.alert({ title: '提示', msg: '当前未应用任何预设，无法保存。', type: 'warning' });
-    return false;
-  }
-
-  const presetPath = typeof window.resolveParamsPresetPath === 'function'
-    ? window.resolveParamsPresetPath(window, preset.path) || preset.path
-    : preset.path;
-  const fileName = typeof window.resolveParamsDisplayFileName === 'function'
-    ? window.resolveParamsDisplayFileName(window, presetPath)
-    : presetPath.split('\\').pop();
-
-  if (!options.skipConfirm) {
-    const confirmed = await MKPModal.confirm({
-      title: '保存所有修改？',
-      msg: `将把当前参数写回到 <span class="font-mono text-xs">${escapeParamHtml(fileName)}</span>。`,
-      type: 'info',
-      confirmText: '确认保存',
-      cancelText: '再检查一下'
-    });
-    if (!confirmed) return false;
-  }
-
-  const saveBtn = document.getElementById('saveParamsBtn');
-  if (!saveBtn || saveBtn.disabled || saveBtn.dataset.isSaving === 'true') return false;
-
-  saveBtn.dataset.isSaving = 'true';
-  const spinIcon = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
-  let resetEngine = setButtonStatus(saveBtn, '110px', '保存中', spinIcon, 'btn-expand-theme');
-
-  updateParamDirtyUI(store);
-
-  const snapshot = rememberParamSnapshot({ force: true }) || collectParamSnapshotFromDom();
-  const flatUpdates = applyWipingTowerParamCompatibility(snapshot.flat);
-
-  const startTime = Date.now();
-  const result = await window.mkpAPI.overwritePreset(presetPath, unflattenObject(flatUpdates));
-  const elapsed = Date.now() - startTime;
-  if (elapsed < 600) await new Promise((resolve) => setTimeout(resolve, 600 - elapsed));
-
-  if (!result.success) {
-    resetEngine();
-    saveBtn.dataset.isSaving = 'false';
-    updateParamDirtyUI(store);
-    window.setTimeout(() => updateParamDirtyUI(store), 340);
-    await MKPModal.alert({ title: '保存失败', msg: result.error || '写入失败。', type: 'error' });
-    return false;
-  }
-
-  const nextPresetData = unflattenObject(flatUpdates);
-  if (typeof window.updatePresetCacheSnapshot === 'function') {
-    window.updatePresetCacheSnapshot(presetPath, nextPresetData);
-  } else {
-    window.presetCache = {
-      path: presetPath,
-      data: nextPresetData,
-      timestamp: Date.now()
-    };
-  }
-  markActiveParamSnapshotSaved(snapshot);
-  if (typeof window.emitActivePresetUpdated === 'function') {
-    window.emitActivePresetUpdated({ reason: 'params-save', path: presetPath, forceRefresh: false });
-  }
-  if (typeof window.broadcastPresetMutation === 'function') {
-    window.broadcastPresetMutation({ reason: 'params-save', path: presetPath });
-  }
-  const checkIcon = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>';
-  resetEngine = setButtonStatus(saveBtn, '118px', '保存成功', checkIcon, 'btn-expand-green');
-  setTimeout(() => {
-    resetEngine();
-    saveBtn.dataset.isSaving = 'false';
-    updateParamDirtyUI();
-    window.setTimeout(() => updateParamDirtyUI(), 340);
-  }, 1800);
-  return true;
 }
 
 async function saveAllDynamicParams(options = {}) {
@@ -3881,7 +3584,10 @@ function bindParamEditors() {
       refreshTowerPositionDisclosureFromDom();
       syncTowerAdvancedPanels(document);
     }
-    if (checkbox) updateParamDirtyState();
+    if (checkbox) {
+      rememberParamSnapshot();
+      updateParamDirtyState();
+    }
   });
 }
 

@@ -80,9 +80,24 @@ describe('settings TOML conversion runtime smoke', () => {
     expect(htmlSource).toContain('id="settingsSectionNav"');
     expect(htmlSource).toContain('class="page-header-sub params-page-header-sub"');
     expect(htmlSource).toContain('class="params-section-nav"');
+    expect(htmlSource).toContain('统一管理启动、界面、更新和开发辅助相关选项');
+    expect(htmlSource).toMatch(/class="page-header-sub params-page-header-sub">[\s\S]*?<\/div>\s*<div id="settingsSectionNav" class="params-section-nav"/);
     expect(htmlSource).toContain('id="tab-setting-startup" onclick="scrollToSetting(\'setting-startup\')" class="params-nav-item active theme-text transition-colors"');
     expect(htmlSource).toContain('id="tab-setting-appearance" onclick="scrollToSetting(\'setting-appearance\')" class="params-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"');
     expect(htmlSource).toContain('id="tab-setting-update" onclick="scrollToSetting(\'setting-update\')" class="params-nav-item text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"');
     expect(appSource).toMatch(/const navItems = document\.querySelectorAll\('#settingsSectionNav \.params-nav-item'\);/);
+  });
+
+  it('keeps settings section spacing compact and matches the params-page anchor offset', () => {
+    const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
+
+    expect(htmlSource).toContain('class="settings-page-stack max-w-4xl"');
+    expect(htmlSource).toContain('id="setting-appearance" class="settings-section"');
+    expect(htmlSource).toContain('id="setting-update" class="settings-section"');
+    expect(htmlSource).not.toContain('id="setting-appearance" class="settings-section pt-8"');
+    expect(htmlSource).not.toContain('id="setting-update" class="settings-section pt-8"');
+    expect(appSource).toMatch(/const targetScrollTop = container\.scrollTop \+ \(targetRect\.top - containerRect\.top\) - 18;/);
+    expect(styleSource).toMatch(/\.settings-page-stack \{\s*display: flex;\s*flex-direction: column;\s*gap: 24px;\s*\}/);
+    expect(styleSource).toMatch(/\.settings-section-title \{\s*margin-bottom: 16px;\s*\}/);
   });
 });

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "initialSnapshotFile": "000_initial.json",
+  "activeSnapshotFile": "layout_20260320-121337-639.json",
+  "snapshots": [
+    {
+      "fileName": "layout_20260320-121337-639.json",
+      "reason": "save-target-layout",
+      "savedAt": "2026-03-20T04:13:37.639Z"
+    },
+    {
+      "fileName": "layout_20260320-083931-617.json",
+      "reason": "legacy-local-storage-migration",
+      "savedAt": "2026-03-20T00:39:31.617Z"
+    },
+    {
+      "fileName": "000_initial.json",
+      "reason": "initial",
+      "savedAt": "2026-03-20T00:39:31.593Z"
+    }
+  ],
+  "updatedAt": "2026-03-20T04:46:38.088Z"
+}
