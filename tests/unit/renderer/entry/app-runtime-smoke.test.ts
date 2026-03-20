@@ -39,8 +39,9 @@ describe('app.js modern runtime smoke', () => {
     expect(htmlSource).not.toMatch(/id="versionsSectionNav"|id="faqSectionNav"|id="aboutSectionNav"/);
   });
 
-  it('binds a fixed-header wheel proxy so headers and outer blank areas still scroll the visible page content', () => {
+  it('uses the fixed-header page shell itself as the scroll container so side gutters and content share native scrolling', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
 
     expect(source).toContain('function resolveWheelDeltaReferenceLineHeight(referenceElement = null) {');
     expect(source).toContain('function normalizeWheelScrollDelta(event, referenceElement = null) {');
@@ -54,18 +55,17 @@ describe('app.js modern runtime smoke', () => {
     expect(source).toContain('scrollContainer.scrollLeft += delta.left;');
     expect(source).toContain('window.normalizeWheelScrollDelta = normalizeWheelScrollDelta;');
     expect(source).toContain('window.applyWheelScrollProxy = applyWheelScrollProxy;');
-    expect(source).toContain('function isVisibleFixedHeaderPage(page) {');
-    expect(source).toContain("page.matches('.page[data-fixed-header=\"true\"]')");
-    expect(source).toContain('function getVisibleFixedHeaderPageFromTarget(target) {');
-    expect(source).toContain("document.querySelector('.page[data-fixed-header=\"true\"]:not(.hidden)')");
-    expect(source).toContain('function resolveFixedHeaderScrollProxyContent(target) {');
-    expect(source).toContain('function bindFixedHeaderPageWheelProxy() {');
-    expect(source).toContain("document.addEventListener('wheel', (event) => {");
-    expect(source).toContain('if (event.defaultPrevented || event.ctrlKey) return;');
-    expect(source).toContain("if (target instanceof Element && target.closest('.page-content')) return;");
-    expect(source).toContain('applyWheelScrollProxy(scrollContainer, event, scrollContainer);');
-    expect(source).toContain('event.preventDefault();');
-    expect(source).toContain('bindFixedHeaderPageWheelProxy();');
+    expect(source).toContain('function resolvePageScrollContainer(target = null) {');
+    expect(source).toContain("if (page.dataset.fixedHeader === 'true') {");
+    expect(source).toContain('return page;');
+    expect(source).toContain('function getPageScrollHeaderOffset(scrollContainer = null) {');
+    expect(source).toContain('window.resolvePageScrollContainer = resolvePageScrollContainer;');
+    expect(source).toContain('window.getPageScrollHeaderOffset = getPageScrollHeaderOffset;');
+    expect(source).not.toContain('function bindFixedHeaderPageWheelProxy() {');
+    expect(source).not.toContain('bindFixedHeaderPageWheelProxy();');
+    expect(styleSource).toMatch(/\.page:not\(\.hidden\)\[data-fixed-header="true"\] \{[\s\S]*overflow-y: auto !important;[\s\S]*overflow-x: hidden !important;[\s\S]*display: block;/);
+    expect(styleSource).toMatch(/\.page:not\(\.hidden\)\[data-fixed-header="true"\] > \.page-header \{[\s\S]*position: sticky; top: 0;/);
+    expect(styleSource).toMatch(/\.page:not\(\.hidden\)\[data-fixed-header="true"\] > \.page-content \{ overflow: visible; padding: 1\.5rem 2rem 0rem 2rem; \}/);
   });
 
   it('can center floating tooltips over explicit center-aligned anchors such as the wipe-tower preview block', () => {

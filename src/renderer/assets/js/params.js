@@ -191,6 +191,7 @@ let gcodeLineContextMenuState = { row: null, editor: null };
 let copiedGcodeLineText = '';
 const gcodeHistoryStore = new WeakMap();
 const PARAM_HISTORY_LIMIT = 4000;
+const PARAM_HISTORY_MERGE_WINDOW_MS = 1200;
 const PARAMS_SAVE_DEFAULT_LABEL = '保存所有修改';
 const PARAMS_SAVE_WORKING_LABEL = '保存中...';
 const PARAMS_SAVE_SUCCESS_LABEL = '已保存';
@@ -359,6 +360,24 @@ function refreshParamStoreDirtyFlag(store = getActiveParamStore()) {
   return store.dirty;
 }
 
+function clearParamHistoryMergeState(store = getActiveParamStore()) {
+  if (!store) return;
+  store.historyMergeKey = null;
+  store.historyMergeIndex = -1;
+  store.historyMergeExpiresAt = 0;
+}
+
+function armParamHistoryMergeState(store, mergeKey, mergeIndex, mergeWindowMs = PARAM_HISTORY_MERGE_WINDOW_MS) {
+  if (!store || !mergeKey) {
+    clearParamHistoryMergeState(store);
+    return;
+  }
+
+  store.historyMergeKey = mergeKey;
+  store.historyMergeIndex = mergeIndex;
+  store.historyMergeExpiresAt = Date.now() + mergeWindowMs;
+}
+
 function getParamsSaveButtonLabel(button = document.getElementById('saveParamsBtn')) {
   return button?.querySelector('.params-save-label') || null;
 }
@@ -500,7 +519,10 @@ function ensureParamStore(path, flatState) {
     savedFullSerialized: serializeParamFullState(flatState),
     currentFullSerialized: serializeParamFullState(flatState),
     dirty: false,
-    lastFocus: cloneParamFocus(snapshot.focus)
+    lastFocus: cloneParamFocus(snapshot.focus),
+    historyMergeKey: null,
+    historyMergeIndex: -1,
+    historyMergeExpiresAt: 0
   };
   paramEditorSession.stores.set(path, store);
   return store;
@@ -567,6 +589,10 @@ function rememberParamSnapshot(options = {}) {
 
   const store = getActiveParamStore();
   if (!store) return null;
+  const mergeKey = typeof options.mergeKey === 'string' && options.mergeKey ? options.mergeKey : null;
+  const mergeWindowMs = Number.isFinite(options.mergeWindowMs) && options.mergeWindowMs > 0
+    ? options.mergeWindowMs
+    : PARAM_HISTORY_MERGE_WINDOW_MS;
 
   const snapshot = collectParamSnapshotFromDom();
   if (options.explicitFocus) {
@@ -582,15 +608,26 @@ function rememberParamSnapshot(options = {}) {
 
   const nextSerialized = serializeParamSnapshot(snapshot);
   const currentSerialized = serializeParamSnapshot(store.history[store.index]);
+  const canMergeIntoCurrent = !options.force
+    && !options.replaceCurrent
+    && !!mergeKey
+    && store.historyMergeKey === mergeKey
+    && store.historyMergeIndex === store.index
+    && Date.now() <= (store.historyMergeExpiresAt || 0);
 
   if (!options.force && nextSerialized === currentSerialized) {
     store.history[store.index].focus = cloneParamFocus(snapshot.focus);
     store.currentFullSerialized = serializeParamFullState(store.history[store.index].flat);
+    if (mergeKey) {
+      armParamHistoryMergeState(store, mergeKey, store.index, mergeWindowMs);
+    } else {
+      clearParamHistoryMergeState(store);
+    }
     updateParamDirtyState(store);
     return snapshot;
   }
 
-  if (options.replaceCurrent) {
+  if (options.replaceCurrent || canMergeIntoCurrent) {
     store.history[store.index] = snapshot;
   } else {
     store.history = store.history.slice(0, store.index + 1);
@@ -603,6 +640,11 @@ function rememberParamSnapshot(options = {}) {
   }
 
   store.currentFullSerialized = serializeParamFullState(snapshot.flat);
+  if (mergeKey && !options.force) {
+    armParamHistoryMergeState(store, mergeKey, store.index, mergeWindowMs);
+  } else {
+    clearParamHistoryMergeState(store);
+  }
   updateParamDirtyState(store);
   return snapshot;
 }
@@ -691,6 +733,7 @@ async function stepParamHistory(direction, options = {}) {
   const store = getActiveParamStore();
   if (!store) return false;
 
+  clearParamHistoryMergeState(store);
   const nextIndex = store.index + direction;
   if (nextIndex < 0 || nextIndex >= store.history.length) return false;
 
@@ -704,6 +747,7 @@ async function stepParamHistory(direction, options = {}) {
 function discardActiveParamChanges() {
   const store = getActiveParamStore();
   if (!store) return;
+  clearParamHistoryMergeState(store);
 
   const savedIndex = store.history.findIndex((snapshot) => serializeParamSnapshot(snapshot) === store.savedSerialized);
   if (savedIndex >= 0) {
@@ -755,6 +799,7 @@ function replaceActiveParamStoreWithPersistedState(presetPath, flatState, option
   store.path = presetPath;
   store.history = [nextSnapshot];
   store.index = 0;
+  clearParamHistoryMergeState(store);
   markParamStoreSnapshotSaved(store, nextSnapshot);
   paramEditorSession.activePath = presetPath;
 
@@ -3048,7 +3093,7 @@ async function saveAllDynamicParams(options = {}) {
   setParamsSaveButtonWorking(saveBtn);
   updateParamDirtyUI(store);
 
-  const snapshot = rememberParamSnapshot({ force: true }) || collectParamSnapshotFromDom();
+  const snapshot = rememberParamSnapshot({ replaceCurrent: true }) || collectParamSnapshotFromDom();
   const flatUpdates = applyWipingTowerParamCompatibility(snapshot.flat);
 
   const startTime = Date.now();
@@ -3494,7 +3539,13 @@ function bindParamEditors() {
   window._paramEditorsBound = true;
 
   const getParamsScrollContainer = (element = null) => {
-    return element?.closest?.('.page-content') || document.getElementById('paramsPageContent') || null;
+    if (typeof window.resolvePageScrollContainer === 'function') {
+      return window.resolvePageScrollContainer(element instanceof Element ? element : document.getElementById('page-params'))
+        || document.getElementById('page-params')
+        || document.getElementById('paramsPageContent')
+        || null;
+    }
+    return document.getElementById('page-params') || element?.closest?.('.page-content') || document.getElementById('paramsPageContent') || null;
   };
 
   const getNormalizedWheelDelta = (event, referenceElement = null) => {
@@ -3513,6 +3564,32 @@ function bindParamEditors() {
     if (delta.top) scrollContainer.scrollTop += delta.top;
     if (delta.left) scrollContainer.scrollLeft += delta.left;
     return delta;
+  };
+
+  const applyWheelDeltaToElement = (element, delta) => {
+    if (!(element instanceof HTMLElement) || !delta) return;
+    if (delta.top) element.scrollTop += delta.top;
+    if (delta.left) element.scrollLeft += delta.left;
+  };
+
+  const getInputHistoryMergeKey = (target) => {
+    if (!(target instanceof Element)) return null;
+
+    if (target.matches('[data-gcode-line]')) {
+      const shell = target.closest('[data-gcode-mode]');
+      const key = shell?.getAttribute('data-json-key');
+      const row = target.closest('.gcode-line-row');
+      return key ? `gcode-line:${key}:${row?.dataset.lineIndex || 0}` : null;
+    }
+
+    if (target.matches('[data-gcode-raw]')) {
+      const shell = target.closest('[data-gcode-mode]');
+      const key = shell?.getAttribute('data-json-key');
+      return key ? `gcode-raw:${key}` : null;
+    }
+
+    const key = target.getAttribute('data-json-key');
+    return key ? `field:${key}` : null;
   };
 
   const canElementConsumeWheel = (element, deltaY) => {
@@ -3536,7 +3613,12 @@ function bindParamEditors() {
       ? document.activeElement === editorTarget
       : editorTarget.contains(document.activeElement);
 
-    if (activeTarget && canElementConsumeWheel(editorTarget, event.deltaY)) {
+    if (activeTarget) {
+      const delta = getNormalizedWheelDelta(event, editorTarget);
+      event.preventDefault();
+      if (canElementConsumeWheel(editorTarget, delta.top)) {
+        applyWheelDeltaToElement(editorTarget, delta);
+      }
       return;
     }
 
@@ -3608,7 +3690,7 @@ function bindParamEditors() {
       const cardShell = lineInput.closest('[data-gcode-mode]');
       if (kind) kind.textContent = getGcodeLineHint(lineInput.value);
       if (cardShell) rememberGcodeHistory(cardShell);
-      rememberParamSnapshot();
+      rememberParamSnapshot({ mergeKey: getInputHistoryMergeKey(lineInput) });
       return;
     }
 
@@ -3616,7 +3698,7 @@ function bindParamEditors() {
     if (rawInput) {
       const shell = rawInput.closest('[data-gcode-mode]');
       if (shell?.dataset.gcodeMode === 'structured') syncRawToStructured(shell, { resetHistory: true });
-      rememberParamSnapshot();
+      rememberParamSnapshot({ mergeKey: getInputHistoryMergeKey(rawInput) });
       return;
     }
 
@@ -3628,7 +3710,7 @@ function bindParamEditors() {
       } else if (isTowerGeometryField(key)) {
         refreshTowerPositionDisclosureFromDom();
       }
-      rememberParamSnapshot();
+      rememberParamSnapshot({ mergeKey: getInputHistoryMergeKey(editable) });
     }
   });
 
@@ -3643,7 +3725,7 @@ function bindParamEditors() {
         refreshTowerPositionDisclosureFromDom();
       }
       if (normalized) {
-        rememberParamSnapshot({ force: true });
+        rememberParamSnapshot({ mergeKey: getInputHistoryMergeKey(editable) });
       }
       updateParamDirtyState();
     }

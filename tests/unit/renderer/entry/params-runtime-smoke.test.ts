@@ -195,6 +195,7 @@ describe('params.js modern runtime smoke', () => {
     expect(block).toMatch(/const store = getActiveParamStore\(\);[\s\S]*if \(!store\?\.dirty\) \{[\s\S]*updateParamDirtyUI\(store\);[\s\S]*return false;[\s\S]*\}/);
     expect(block).toMatch(/if \(!saveBtn \|\| saveBtn\.disabled \|\| saveBtn\.dataset\.isSaving === 'true'\) return false;/);
     expect(block).toMatch(/saveBtn\.dataset\.isSaving = 'true';[\s\S]*setParamsSaveButtonWorking\(saveBtn\);[\s\S]*updateParamDirtyUI\(store\);/);
+    expect(block).toContain("const snapshot = rememberParamSnapshot({ replaceCurrent: true }) || collectParamSnapshotFromDom();");
     expect(block).toMatch(/clearParamsSaveButtonFeedback\(saveBtn\);[\s\S]*delete saveBtn\.dataset\.isSaving;[\s\S]*updateParamDirtyUI\(store\);/);
     expect(block).toMatch(/flashParamsSaveButtonSuccess\(saveBtn, 1800, \(\) => \{[\s\S]*delete saveBtn\.dataset\.isSaving;[\s\S]*\}\);/);
   });
@@ -575,24 +576,82 @@ describe('params.js modern runtime smoke', () => {
     );
 
     expect(block).toContain('const getParamsScrollContainer = (element = null) => {');
-    expect(block).toContain("return element?.closest?.('.page-content') || document.getElementById('paramsPageContent') || null;");
+    expect(block).toContain("return window.resolvePageScrollContainer(element instanceof Element ? element : document.getElementById('page-params'))");
+    expect(block).toContain("|| document.getElementById('page-params')");
+    expect(block).toContain("|| document.getElementById('paramsPageContent')");
     expect(block).toContain('const getNormalizedWheelDelta = (event, referenceElement = null) => {');
     expect(block).toContain("if (typeof window.normalizeWheelScrollDelta === 'function') {");
     expect(block).toContain('return window.normalizeWheelScrollDelta(event, referenceElement);');
     expect(block).toContain('const applyWheelProxyScroll = (scrollContainer, event) => {');
     expect(block).toContain("if (typeof window.applyWheelScrollProxy === 'function') {");
     expect(block).toContain('return window.applyWheelScrollProxy(scrollContainer, event, scrollContainer);');
+    expect(block).toContain('const applyWheelDeltaToElement = (element, delta) => {');
+    expect(block).toContain('if (delta.top) element.scrollTop += delta.top;');
+    expect(block).toContain('if (delta.left) element.scrollLeft += delta.left;');
     expect(block).toContain('const canElementConsumeWheel = (element, deltaY) => {');
     expect(block).toContain('const editorTarget = event.target instanceof Element');
     expect(block).toContain("event.target.closest('.param-textarea, .gcode-editor')");
     expect(block).toContain("const activeTarget = editorTarget.matches('.param-textarea')");
     expect(block).toContain('? document.activeElement === editorTarget');
     expect(block).toContain(': editorTarget.contains(document.activeElement);');
-    expect(block).toContain('if (activeTarget && canElementConsumeWheel(editorTarget, event.deltaY)) {');
+    expect(block).toContain('if (activeTarget) {');
+    expect(block).toContain('const delta = getNormalizedWheelDelta(event, editorTarget);');
+    expect(block).toContain('event.preventDefault();');
+    expect(block).toContain('if (canElementConsumeWheel(editorTarget, delta.top)) {');
+    expect(block).toContain('applyWheelDeltaToElement(editorTarget, delta);');
+    expect(block).toContain('return;');
     expect(block).toContain('if (delta.top) scrollContainer.scrollTop += delta.top;');
     expect(block).toContain('if (delta.left) scrollContainer.scrollLeft += delta.left;');
     expect(block).toContain('applyWheelProxyScroll(scrollContainer, event);');
-    expect(block).toContain('event.preventDefault();');
+  });
+
+  it('coalesces consecutive field edits into one undo step so numeric scroll changes do not flood param history', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    const historySetupBlock = source.slice(
+      source.lastIndexOf('const PARAM_HISTORY_LIMIT = 4000;'),
+      source.lastIndexOf('function applyParamSnapshotToDom(')
+    );
+    const historyActionsBlock = source.slice(
+      source.lastIndexOf('async function stepParamHistory(direction, options = {}) {'),
+      source.lastIndexOf('function markActiveParamSnapshotSaved(')
+    );
+    const persistedStateBlock = source.slice(
+      source.lastIndexOf('function replaceActiveParamStoreWithPersistedState(presetPath, flatState, options = {}) {'),
+      source.lastIndexOf('function collectParamStateDiffKeys(')
+    );
+    const bindBlock = source.slice(
+      source.lastIndexOf('function bindParamEditors()'),
+      source.lastIndexOf('window.renderDynamicParamsPage = renderDynamicParamsPage;')
+    );
+
+    expect(historySetupBlock).toContain('const PARAM_HISTORY_MERGE_WINDOW_MS = 1200;');
+    expect(historySetupBlock).toContain('function clearParamHistoryMergeState(store = getActiveParamStore()) {');
+    expect(historySetupBlock).toContain('function armParamHistoryMergeState(store, mergeKey, mergeIndex, mergeWindowMs = PARAM_HISTORY_MERGE_WINDOW_MS) {');
+    expect(historySetupBlock).toContain('historyMergeKey: null,');
+    expect(historySetupBlock).toContain('historyMergeIndex: -1,');
+    expect(historySetupBlock).toContain('historyMergeExpiresAt: 0');
+    expect(historySetupBlock).toContain("const mergeKey = typeof options.mergeKey === 'string' && options.mergeKey ? options.mergeKey : null;");
+    expect(historySetupBlock).toContain('const canMergeIntoCurrent = !options.force');
+    expect(historySetupBlock).toContain('store.historyMergeKey === mergeKey');
+    expect(historySetupBlock).toContain('store.historyMergeIndex === store.index');
+    expect(historySetupBlock).toContain('Date.now() <= (store.historyMergeExpiresAt || 0)');
+    expect(historySetupBlock).toContain('if (options.replaceCurrent || canMergeIntoCurrent) {');
+    expect(historySetupBlock).toMatch(/if \(mergeKey\) \{[\s\S]*armParamHistoryMergeState\(store, mergeKey, store\.index, mergeWindowMs\);[\s\S]*\} else \{[\s\S]*clearParamHistoryMergeState\(store\);[\s\S]*\}/);
+    expect(historySetupBlock).toContain('armParamHistoryMergeState(store, mergeKey, store.index, mergeWindowMs);');
+    expect(historySetupBlock).toContain('clearParamHistoryMergeState(store);');
+    expect(historyActionsBlock).toContain('async function stepParamHistory(direction, options = {}) {');
+    expect(historyActionsBlock).toContain('clearParamHistoryMergeState(store);');
+    expect(historyActionsBlock).toContain('const nextIndex = store.index + direction;');
+    expect(historyActionsBlock).toContain('function discardActiveParamChanges() {');
+    expect(persistedStateBlock).toContain('function replaceActiveParamStoreWithPersistedState(presetPath, flatState, options = {}) {');
+    expect(persistedStateBlock).toContain('clearParamHistoryMergeState(store);');
+    expect(bindBlock).toContain('const getInputHistoryMergeKey = (target) => {');
+    expect(bindBlock).toContain('return key ? `field:${key}` : null;');
+    expect(bindBlock).toContain('return key ? `gcode-raw:${key}` : null;');
+    expect(bindBlock).toContain('return key ? `gcode-line:${key}:${row?.dataset.lineIndex || 0}` : null;');
+    expect(bindBlock).toContain('rememberParamSnapshot({ mergeKey: getInputHistoryMergeKey(lineInput) });');
+    expect(bindBlock).toContain('rememberParamSnapshot({ mergeKey: getInputHistoryMergeKey(rawInput) });');
+    expect(bindBlock).toContain('rememberParamSnapshot({ mergeKey: getInputHistoryMergeKey(editable) });');
   });
 
   it('keeps undo redo behind the same visible-page and modal gate before stepping param history', () => {
@@ -646,6 +705,8 @@ describe('params.js modern runtime smoke', () => {
 
     expect(styleSource).toMatch(/\.param-row-gcode \.gcode-card-shell \{\s*border: none;\s*background: transparent;\s*padding: 0;\s*\}/);
     expect(styleSource).toMatch(/\.dark \.param-row-gcode \.gcode-card-shell \{\s*background: transparent;\s*\}/);
+    expect(styleSource).toMatch(/\.param-textarea \{[\s\S]*overscroll-behavior: contain;/);
+    expect(styleSource).toMatch(/\.gcode-editor \{[\s\S]*overscroll-behavior: contain;/);
   });
 
   it('styles the params save button with a flat soft-blue disabled state and a larger outline ripple for dirty changes', () => {
@@ -707,11 +768,17 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/function buildParamsSectionNavMarkup\(groups = \{\}\) \{/);
     expect(source).toMatch(/const sectionKeys = PARAM_SECTION_ORDER[\s\S]*\.filter\(\(groupKey\) => Array\.isArray\(groups\[groupKey\]\) && groups\[groupKey\]\.length > 0\)[\s\S]*\.slice\(0, 6\);/);
     expect(source).toMatch(/function renderParamsSectionNav\(groups = \{\}\) \{/);
+    expect(source).toMatch(/function getParamsPageScrollContainer\(\) \{/);
+    expect(source).toMatch(/window\.resolvePageScrollContainer\(page\) \|\| page \|\| document\.getElementById\('paramsPageContent'\)/);
+    expect(source).toMatch(/function getParamsStickyHeaderOffset\(scrollContainer = getParamsPageScrollContainer\(\)\) \{/);
     expect(source).toMatch(/function scrollToParamsSection\(sectionId\) \{/);
-    expect(source).toMatch(/const container = document\.getElementById\('paramsPageContent'\);/);
+    expect(source).toMatch(/const container = getParamsPageScrollContainer\(\);/);
+    expect(source).toMatch(/const headerOffset = getParamsStickyHeaderOffset\(container\);/);
+    expect(source).toMatch(/const targetScrollTop = container\.scrollTop \+ \(targetRect\.top - containerRect\.top\) - headerOffset - 18;/);
     expect(source).toMatch(/function syncParamsSectionNavState\(\) \{/);
     expect(source).toMatch(/const nav = document\.getElementById\('paramsSectionNav'\);/);
     expect(source).toMatch(/const navItems = nav\?\.querySelectorAll\('\.params-nav-item'\) \|\| \[\];/);
+    expect(source).toMatch(/const stickyThreshold = getParamsStickyHeaderOffset\(container\) \+ 140;/);
     expect(source).toMatch(/function initParamsSectionNav\(\) \{/);
     expect(source).toMatch(/renderParamsSectionNav\(groups\);[\s\S]*initParamsSectionNav\(\);/);
     expect(source).toMatch(/<section id="params-section-\$\{escapeParamHtml\(groupKey\)\}" class="params-section params-group-preview-section">/);

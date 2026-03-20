@@ -96,7 +96,9 @@ describe('settings TOML conversion runtime smoke', () => {
     expect(htmlSource).toContain('id="setting-update" class="settings-section"');
     expect(htmlSource).not.toContain('id="setting-appearance" class="settings-section pt-8"');
     expect(htmlSource).not.toContain('id="setting-update" class="settings-section pt-8"');
-    expect(appSource).toMatch(/const targetScrollTop = container\.scrollTop \+ \(targetRect\.top - containerRect\.top\) - 18;/);
+    expect(appSource).toMatch(/const container = resolvePageScrollContainer\(document\.getElementById\('page-setting'\)\) \|\| document\.getElementById\('settingsPageContent'\);/);
+    expect(appSource).toMatch(/const headerOffset = getPageScrollHeaderOffset\(container\);/);
+    expect(appSource).toMatch(/const targetScrollTop = container\.scrollTop \+ \(targetRect\.top - containerRect\.top\) - headerOffset - 18;/);
     expect(styleSource).toMatch(/\.settings-page-stack \{\s*display: flex;\s*flex-direction: column;\s*gap: 24px;\s*\}/);
     expect(styleSource).toMatch(/\.settings-section-title \{\s*margin-bottom: 16px;\s*\}/);
   });

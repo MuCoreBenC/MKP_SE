@@ -1902,6 +1902,7 @@ html.dark[data-theme-mode="oled"] .mode-text-oled {
   min-height: 108px;
   resize: vertical;
   line-height: 1.5;
+  overscroll-behavior: contain;
 }
 
 .param-tooltip-anchor {
@@ -2069,6 +2070,7 @@ html.dark[data-theme-mode="oled"] .mode-text-oled {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overscroll-behavior: contain;
 }
 
 .gcode-structured-toolbar {
