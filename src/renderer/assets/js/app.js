@@ -1467,7 +1467,8 @@ async function checkOnlineUpdates(btnElement) {
     
     // 💡 核心修复：精准定位当前页面的滚动盒子，执行强制下滚
     setTimeout(() => {
-        const scrollContainer = document.querySelector('#page-download .page-content');
+        const scrollContainer = resolvePageScrollContainer(document.getElementById('page-download'))
+          || document.querySelector('#page-download .page-content');
         if (scrollContainer) {
             scrollContainer.scrollTo({
                 top: scrollContainer.scrollHeight + 1000, // +1000 保证绝对滑到底
@@ -2174,7 +2175,7 @@ function filterFaq(keyword) {
 // ============================================================
 
 window.scrollToSetting = function(sectionId) {
-  const container = document.getElementById('settingsPageContent'); // 获取真正的滚动容器
+  const container = resolvePageScrollContainer(document.getElementById('page-setting')) || document.getElementById('settingsPageContent');
   const target = document.getElementById(sectionId); // 获取目标模块
   
   if (!container || !target) return;
@@ -2182,9 +2183,10 @@ window.scrollToSetting = function(sectionId) {
   // 核心魔法：通过 getBoundingClientRect 获取视口相对位置
   const containerRect = container.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
+  const headerOffset = getPageScrollHeaderOffset(container);
   
   // 与修改参数页保持一致，给锚点标题留一条更紧凑的安全留白
-  const targetScrollTop = container.scrollTop + (targetRect.top - containerRect.top) - 18;
+  const targetScrollTop = container.scrollTop + (targetRect.top - containerRect.top) - headerOffset - 18;
 
   // 执行丝滑滚动
   container.scrollTo({
@@ -3045,6 +3047,97 @@ function setMacDockScale(scaleValue, options = {}) {
   }
 }
 
+function resolveWheelDeltaReferenceLineHeight(referenceElement = null) {
+  const element = referenceElement instanceof Element ? referenceElement : document.documentElement;
+  const computedStyle = window.getComputedStyle(element);
+  const parsedLineHeight = parseFloat(computedStyle.lineHeight);
+  if (Number.isFinite(parsedLineHeight)) {
+    return parsedLineHeight;
+  }
+
+  const parsedFontSize = parseFloat(computedStyle.fontSize);
+  if (Number.isFinite(parsedFontSize)) {
+    return parsedFontSize * 1.5;
+  }
+
+  return 16;
+}
+
+function normalizeWheelScrollDelta(event, referenceElement = null) {
+  const deltaMode = typeof event?.deltaMode === 'number' ? event.deltaMode : 0;
+  if (deltaMode === 0) {
+    return { left: event.deltaX, top: event.deltaY };
+  }
+
+  if (deltaMode === 1) {
+    const lineHeight = resolveWheelDeltaReferenceLineHeight(referenceElement);
+    return {
+      left: event.deltaX * lineHeight,
+      top: event.deltaY * lineHeight
+    };
+  }
+
+  const pageElement = referenceElement instanceof HTMLElement
+    ? referenceElement
+    : document.documentElement;
+  const pageHeight = pageElement?.clientHeight || window.innerHeight || document.documentElement.clientHeight || 0;
+  const pageWidth = pageElement?.clientWidth || window.innerWidth || document.documentElement.clientWidth || 0;
+
+  return {
+    left: event.deltaX * pageWidth,
+    top: event.deltaY * pageHeight
+  };
+}
+
+function applyWheelScrollProxy(scrollContainer, event, referenceElement = null) {
+  if (!(scrollContainer instanceof HTMLElement)) {
+    return { left: 0, top: 0 };
+  }
+
+  const delta = normalizeWheelScrollDelta(event, referenceElement || scrollContainer);
+  if (delta.top) {
+    scrollContainer.scrollTop += delta.top;
+  }
+  if (delta.left) {
+    scrollContainer.scrollLeft += delta.left;
+  }
+  return delta;
+}
+
+window.normalizeWheelScrollDelta = normalizeWheelScrollDelta;
+window.applyWheelScrollProxy = applyWheelScrollProxy;
+
+function resolvePageScrollContainer(target = null) {
+  const page = target instanceof HTMLElement && target.matches('.page')
+    ? target
+    : target instanceof Element
+      ? target.closest('.page')
+      : null;
+
+  if (!(page instanceof HTMLElement)) return null;
+
+  if (page.dataset.fixedHeader === 'true') {
+    return page;
+  }
+
+  const content = page.querySelector('.page-content');
+  return content instanceof HTMLElement ? content : page;
+}
+
+function getPageScrollHeaderOffset(scrollContainer = null) {
+  const page = scrollContainer instanceof HTMLElement && scrollContainer.matches('.page')
+    ? scrollContainer
+    : scrollContainer instanceof Element
+      ? scrollContainer.closest('.page[data-fixed-header="true"]')
+      : null;
+
+  const header = page?.querySelector('.page-header');
+  return header instanceof HTMLElement ? header.getBoundingClientRect().height : 0;
+}
+
+window.resolvePageScrollContainer = resolvePageScrollContainer;
+window.getPageScrollHeaderOffset = getPageScrollHeaderOffset;
+
 // 全局防重复初始化锁
 let _isAppInitialized = false;
 
@@ -3088,17 +3181,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const fixedPages = document.querySelectorAll('.page[data-fixed-header="true"]');
   fixedPages.forEach(page => {
     const header = page.querySelector('.page-header');
-    const content = page.querySelector('.page-content');
-    if (header && content) {
-      content.addEventListener('scroll', () => {
-        if (content.scrollTop > 10) header.classList.add('is-scrolled');
+    const scrollContainer = resolvePageScrollContainer(page);
+    if (header && scrollContainer) {
+      scrollContainer.addEventListener('scroll', () => {
+        if (scrollContainer.scrollTop > 10) header.classList.add('is-scrolled');
         else header.classList.remove('is-scrolled');
 
         if (page.id === 'page-about') {
           const heroSection = document.getElementById('about-hero-section');
           const miniHeader = document.getElementById('about-mini-header');
           if (heroSection && miniHeader) {
-            if (content.scrollTop > 190) {
+            if (scrollContainer.scrollTop > 190) {
               heroSection.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
               miniHeader.classList.remove('opacity-0', 'translate-y-2', 'pointer-events-none');
               miniHeader.classList.add('opacity-100', 'pointer-events-auto');
@@ -3113,17 +3206,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  const settingsContainer = document.getElementById('settingsPageContent');
+  const settingsContainer = resolvePageScrollContainer(document.getElementById('page-setting'))
+    || document.getElementById('settingsPageContent');
   if (settingsContainer) {
     settingsContainer.addEventListener('scroll', () => {
       const sections = document.querySelectorAll('.settings-section');
       const navItems = document.querySelectorAll('#settingsSectionNav .params-nav-item');
       const containerRect = settingsContainer.getBoundingClientRect();
+      const stickyThreshold = getPageScrollHeaderOffset(settingsContainer) + 120;
       let currentActiveIndex = 0;
 
       sections.forEach((section, index) => {
         const rect = section.getBoundingClientRect();
-        if (rect.top <= containerRect.top + 120) currentActiveIndex = index;
+        if (rect.top <= containerRect.top + stickyThreshold) currentActiveIndex = index;
       });
 
       navItems.forEach((item, index) => {

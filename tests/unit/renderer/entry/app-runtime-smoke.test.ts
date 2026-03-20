@@ -39,6 +39,35 @@ describe('app.js modern runtime smoke', () => {
     expect(htmlSource).not.toMatch(/id="versionsSectionNav"|id="faqSectionNav"|id="aboutSectionNav"/);
   });
 
+  it('binds a fixed-header wheel proxy so headers and outer blank areas still scroll the visible page content', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+
+    expect(source).toContain('function resolveWheelDeltaReferenceLineHeight(referenceElement = null) {');
+    expect(source).toContain('function normalizeWheelScrollDelta(event, referenceElement = null) {');
+    expect(source).toContain("if (deltaMode === 0) {");
+    expect(source).toContain("if (deltaMode === 1) {");
+    expect(source).toContain('const lineHeight = resolveWheelDeltaReferenceLineHeight(referenceElement);');
+    expect(source).toContain('top: event.deltaY * lineHeight');
+    expect(source).toContain('left: event.deltaX * lineHeight');
+    expect(source).toContain('function applyWheelScrollProxy(scrollContainer, event, referenceElement = null) {');
+    expect(source).toContain('scrollContainer.scrollTop += delta.top;');
+    expect(source).toContain('scrollContainer.scrollLeft += delta.left;');
+    expect(source).toContain('window.normalizeWheelScrollDelta = normalizeWheelScrollDelta;');
+    expect(source).toContain('window.applyWheelScrollProxy = applyWheelScrollProxy;');
+    expect(source).toContain('function isVisibleFixedHeaderPage(page) {');
+    expect(source).toContain("page.matches('.page[data-fixed-header=\"true\"]')");
+    expect(source).toContain('function getVisibleFixedHeaderPageFromTarget(target) {');
+    expect(source).toContain("document.querySelector('.page[data-fixed-header=\"true\"]:not(.hidden)')");
+    expect(source).toContain('function resolveFixedHeaderScrollProxyContent(target) {');
+    expect(source).toContain('function bindFixedHeaderPageWheelProxy() {');
+    expect(source).toContain("document.addEventListener('wheel', (event) => {");
+    expect(source).toContain('if (event.defaultPrevented || event.ctrlKey) return;');
+    expect(source).toContain("if (target instanceof Element && target.closest('.page-content')) return;");
+    expect(source).toContain('applyWheelScrollProxy(scrollContainer, event, scrollContainer);');
+    expect(source).toContain('event.preventDefault();');
+    expect(source).toContain('bindFixedHeaderPageWheelProxy();');
+  });
+
   it('can center floating tooltips over explicit center-aligned anchors such as the wipe-tower preview block', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
     const block = source.slice(

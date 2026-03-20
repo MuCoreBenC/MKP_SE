@@ -1199,14 +1199,31 @@ function renderParamsSectionNav(groups = {}) {
   nav.classList.toggle('hidden', !markup.trim());
 }
 
+function getParamsPageScrollContainer() {
+  const page = document.getElementById('page-params');
+  if (typeof window.resolvePageScrollContainer === 'function') {
+    return window.resolvePageScrollContainer(page) || page || document.getElementById('paramsPageContent');
+  }
+  return page || document.getElementById('paramsPageContent');
+}
+
+function getParamsStickyHeaderOffset(scrollContainer = getParamsPageScrollContainer()) {
+  if (typeof window.getPageScrollHeaderOffset === 'function') {
+    return window.getPageScrollHeaderOffset(scrollContainer);
+  }
+  const header = document.querySelector('#page-params .page-header');
+  return header instanceof HTMLElement ? header.getBoundingClientRect().height : 0;
+}
+
 function scrollToParamsSection(sectionId) {
-  const container = document.getElementById('paramsPageContent');
+  const container = getParamsPageScrollContainer();
   const target = document.getElementById(sectionId);
   if (!container || !target) return;
 
   const containerRect = container.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
-  const targetScrollTop = container.scrollTop + (targetRect.top - containerRect.top) - 18;
+  const headerOffset = getParamsStickyHeaderOffset(container);
+  const targetScrollTop = container.scrollTop + (targetRect.top - containerRect.top) - headerOffset - 18;
   container.scrollTo({
     top: targetScrollTop,
     behavior: 'smooth'
@@ -1214,7 +1231,7 @@ function scrollToParamsSection(sectionId) {
 }
 
 function syncParamsSectionNavState() {
-  const container = document.getElementById('paramsPageContent');
+  const container = getParamsPageScrollContainer();
   const nav = document.getElementById('paramsSectionNav');
   if (!container) return;
 
@@ -1223,11 +1240,12 @@ function syncParamsSectionNavState() {
   if (!sections.length || !navItems.length) return;
 
   const containerRect = container.getBoundingClientRect();
+  const stickyThreshold = getParamsStickyHeaderOffset(container) + 140;
   let currentActiveId = sections[0].id;
 
   sections.forEach((section) => {
     const rect = section.getBoundingClientRect();
-    if (rect.top <= containerRect.top + 140) {
+    if (rect.top <= containerRect.top + stickyThreshold) {
       currentActiveId = section.id;
     }
   });
@@ -1243,7 +1261,7 @@ function syncParamsSectionNavState() {
 }
 
 function initParamsSectionNav() {
-  const container = document.getElementById('paramsPageContent');
+  const container = getParamsPageScrollContainer();
   if (!container) return;
 
   if (container.dataset.paramsNavBound !== 'true') {
@@ -1485,7 +1503,7 @@ function renderAdvancedTemplateEditorSection(flatData, presetPath, fileName) {
   `;
 }
 
-function buildAdvancedTemplateDisclosure(flatData) {
+function buildAdvancedTemplateDisclosure__unused(flatData) {
   const cards = PARAM_TEMPLATE_FIELD_ORDER.map((key) => {
     return createGcodeField(key, flatData[key], getParamFieldMeta(key));
   });
@@ -3474,6 +3492,59 @@ function bindParamEditors() {
   ensureGcodeLineContextMenu();
   if (window._paramEditorsBound) return;
   window._paramEditorsBound = true;
+
+  const getParamsScrollContainer = (element = null) => {
+    return element?.closest?.('.page-content') || document.getElementById('paramsPageContent') || null;
+  };
+
+  const getNormalizedWheelDelta = (event, referenceElement = null) => {
+    if (typeof window.normalizeWheelScrollDelta === 'function') {
+      return window.normalizeWheelScrollDelta(event, referenceElement);
+    }
+    return { left: event.deltaX, top: event.deltaY };
+  };
+
+  const applyWheelProxyScroll = (scrollContainer, event) => {
+    if (typeof window.applyWheelScrollProxy === 'function') {
+      return window.applyWheelScrollProxy(scrollContainer, event, scrollContainer);
+    }
+
+    const delta = getNormalizedWheelDelta(event, scrollContainer);
+    if (delta.top) scrollContainer.scrollTop += delta.top;
+    if (delta.left) scrollContainer.scrollLeft += delta.left;
+    return delta;
+  };
+
+  const canElementConsumeWheel = (element, deltaY) => {
+    if (!element || !deltaY) return false;
+    const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+    if (maxScrollTop <= 0) return false;
+    if (deltaY < 0) return element.scrollTop > 0;
+    if (deltaY > 0) return element.scrollTop < maxScrollTop;
+    return false;
+  };
+
+  document.addEventListener('wheel', (event) => {
+    if (event.ctrlKey) return;
+
+    const editorTarget = event.target instanceof Element
+      ? event.target.closest('.param-textarea, .gcode-editor')
+      : null;
+    if (!editorTarget) return;
+
+    const activeTarget = editorTarget.matches('.param-textarea')
+      ? document.activeElement === editorTarget
+      : editorTarget.contains(document.activeElement);
+
+    if (activeTarget && canElementConsumeWheel(editorTarget, event.deltaY)) {
+      return;
+    }
+
+    const scrollContainer = getParamsScrollContainer(editorTarget);
+    if (!scrollContainer) return;
+    applyWheelProxyScroll(scrollContainer, event);
+    event.preventDefault();
+  }, { passive: false, capture: true });
 
   document.addEventListener('contextmenu', (event) => {
     const gcodeHandle = event.target.closest('.gcode-line-meta');

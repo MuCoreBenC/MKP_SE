@@ -276,6 +276,7 @@ describe('params.js modern runtime smoke', () => {
     expect(source).toMatch(/function renderCompactParamToolDisclosure\(section, options = \{\}\) \{/);
     expect(source).toMatch(/function renderAdvancedTemplateEditorSection\(flatData, presetPath, fileName\) \{/);
     expect(source).toMatch(/<details class="params-disclosure params-disclosure-subtle params-tool-disclosure" data-disclosure-id="/);
+    expect(source).not.toMatch(/function buildAdvancedTemplateDisclosure\(/);
   });
 
   it('keeps tower-only compatibility fields internal and does not expose a public lollipop selector', () => {
@@ -566,6 +567,34 @@ describe('params.js modern runtime smoke', () => {
     expect(block).toMatch(/if \(isSave\) \{[\s\S]*event\.preventDefault\(\);[\s\S]*saveAllDynamicParams\(\{ skipConfirm: true \}\);[\s\S]*return;[\s\S]*\}/);
   });
 
+  it('routes wheel input from inactive param editors back to the page scroller until the editor is focused', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('function bindParamEditors()'),
+      source.lastIndexOf('window.renderDynamicParamsPage = renderDynamicParamsPage;')
+    );
+
+    expect(block).toContain('const getParamsScrollContainer = (element = null) => {');
+    expect(block).toContain("return element?.closest?.('.page-content') || document.getElementById('paramsPageContent') || null;");
+    expect(block).toContain('const getNormalizedWheelDelta = (event, referenceElement = null) => {');
+    expect(block).toContain("if (typeof window.normalizeWheelScrollDelta === 'function') {");
+    expect(block).toContain('return window.normalizeWheelScrollDelta(event, referenceElement);');
+    expect(block).toContain('const applyWheelProxyScroll = (scrollContainer, event) => {');
+    expect(block).toContain("if (typeof window.applyWheelScrollProxy === 'function') {");
+    expect(block).toContain('return window.applyWheelScrollProxy(scrollContainer, event, scrollContainer);');
+    expect(block).toContain('const canElementConsumeWheel = (element, deltaY) => {');
+    expect(block).toContain('const editorTarget = event.target instanceof Element');
+    expect(block).toContain("event.target.closest('.param-textarea, .gcode-editor')");
+    expect(block).toContain("const activeTarget = editorTarget.matches('.param-textarea')");
+    expect(block).toContain('? document.activeElement === editorTarget');
+    expect(block).toContain(': editorTarget.contains(document.activeElement);');
+    expect(block).toContain('if (activeTarget && canElementConsumeWheel(editorTarget, event.deltaY)) {');
+    expect(block).toContain('if (delta.top) scrollContainer.scrollTop += delta.top;');
+    expect(block).toContain('if (delta.left) scrollContainer.scrollLeft += delta.left;');
+    expect(block).toContain('applyWheelProxyScroll(scrollContainer, event);');
+    expect(block).toContain('event.preventDefault();');
+  });
+
   it('keeps undo redo behind the same visible-page and modal gate before stepping param history', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/params.js', 'utf8');
     const block = source.slice(
@@ -610,6 +639,13 @@ describe('params.js modern runtime smoke', () => {
     expect(styleSource).toMatch(/\.params-disclosure \{/);
     expect(styleSource).toMatch(/\.params-disclosure-summary \{/);
     expect(styleSource).toMatch(/\.params-diagnostics-code \{/);
+  });
+
+  it('flattens the extra gcode shell styling so multiline editors no longer look like nested cards', () => {
+    const styleSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/css/style.css', 'utf8');
+
+    expect(styleSource).toMatch(/\.param-row-gcode \.gcode-card-shell \{\s*border: none;\s*background: transparent;\s*padding: 0;\s*\}/);
+    expect(styleSource).toMatch(/\.dark \.param-row-gcode \.gcode-card-shell \{\s*background: transparent;\s*\}/);
   });
 
   it('styles the params save button with a flat soft-blue disabled state and a larger outline ripple for dirty changes', () => {
