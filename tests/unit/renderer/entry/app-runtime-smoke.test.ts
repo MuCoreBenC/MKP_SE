@@ -114,6 +114,22 @@ describe('app.js modern runtime smoke', () => {
     expect(block).toMatch(/await renderPresetList\(printerData, versionType\);/);
   });
 
+  it('builds the copied cli command from launch info so development mode prepends the app path before json and gcode args', () => {
+    const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
+    const block = source.slice(
+      source.lastIndexOf('async function updateScriptPathDisplay()'),
+      source.lastIndexOf('function extractOffsetValues(')
+    );
+
+    expect(block).toContain('const cliLaunchInfo = window.mkpAPI?.getCliLaunchInfo');
+    expect(block).toContain('? await window.mkpAPI.getCliLaunchInfo()');
+    expect(block).toContain('exePath: await window.mkpAPI.getExePath(),');
+    expect(block).toContain('if (cliLaunchInfo.defaultApp && cliLaunchInfo.appPath) {');
+    expect(block).toContain('commandParts.push(`"${cliLaunchInfo.appPath}"`);');
+    expect(block).toContain('commandParts.push(`--Json "${presetPath}" --Gcode`);');
+    expect(block).toContain("const command = commandParts.join(' ');");
+  });
+
   it('prefers modern download context when fetchCloudPresets refreshes the local preset list cache', () => {
     const source = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
     const block = source.slice(
@@ -309,7 +325,9 @@ describe('app.js modern runtime smoke', () => {
     expect(layoutDefaultsRuntimeSource).toMatch(/window\.__MKP_LAYOUT_DEFAULTS_RUNTIME__/);
     expect(layoutDefaultsRuntimeSource).toMatch(/window\.mkpAPI\.getGodModeRuntimeState/);
     expect(layoutDefaultsRuntimeSource).toMatch(/function resolveEffectiveLayoutForElement\(/);
-    expect(layoutDefaultsGeneratedSource).toMatch(/global\.__MKP_LAYOUT_DEFAULTS__ = \{\}/);
+    expect(layoutDefaultsGeneratedSource).toMatch(/global\.__MKP_LAYOUT_DEFAULTS__ = \{/);
+    expect(layoutDefaultsGeneratedSource).toMatch(/global\.__MKP_LAYOUT_DEFAULTS_META__ = \{/);
+    expect(layoutDefaultsGeneratedSource).toMatch(/"layoutCount":/);
     expect(packageSource).toMatch(/"!src\/main\/god_mode_layout_store\.js"/);
     expect(packageSource).toMatch(/"!src\/renderer\/assets\/css\/god-mode-layout\.css"/);
     expect(packageSource).toMatch(/"!src\/renderer\/assets\/js\/god-mode-layout\.js"/);

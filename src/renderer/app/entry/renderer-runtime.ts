@@ -24,6 +24,12 @@ type AppUpdateStateView = {
   checkedAt: string | null;
 };
 
+type CliLaunchInfo = {
+  exePath: string;
+  appPath?: string | null;
+  defaultApp?: boolean;
+};
+
 declare global {
   interface Window {
     brands?: Array<{ id: string; name?: string; shortName?: string; subtitle?: string; favorite?: boolean; image?: string }>;
@@ -76,13 +82,27 @@ export function resolveParamsPresetPath(targetWindow: Window, fallbackPath: stri
   return targetWindow.__getParamsPresetView__?.()?.absolutePath ?? fallbackPath ?? null;
 }
 
-export function buildScriptCommandView(targetWindow: Window, exePath: string, fallbackPresetPath: string | null) {
+export function buildScriptCommandView(
+  targetWindow: Window,
+  launchInfo: string | CliLaunchInfo,
+  fallbackPresetPath: string | null
+) {
   const presetPath = resolveParamsPresetPath(targetWindow, fallbackPresetPath);
   if (!presetPath) {
     return null;
   }
 
-  return `"${exePath}" --Json "${presetPath}" --Gcode`;
+  const resolvedLaunchInfo = typeof launchInfo === 'string'
+    ? { exePath: launchInfo, appPath: null, defaultApp: false }
+    : launchInfo;
+  const commandSegments = [`"${resolvedLaunchInfo.exePath}"`];
+
+  if (resolvedLaunchInfo.defaultApp && resolvedLaunchInfo.appPath) {
+    commandSegments.push(`"${resolvedLaunchInfo.appPath}"`);
+  }
+
+  commandSegments.push(`--Json "${presetPath}" --Gcode`);
+  return commandSegments.join(' ');
 }
 
 export function resolveParamsDisplayFileName(targetWindow: Window, fallbackPath: string | null) {

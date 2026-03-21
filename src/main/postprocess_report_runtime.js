@@ -118,10 +118,16 @@ function readPostprocessReportState(reportPath) {
   return JSON.parse(fs.readFileSync(reportPath, 'utf8'));
 }
 
-function launchDetachedPostprocessReportViewer(app, reportPath) {
+function launchDetachedPostprocessReportViewer(app, reportPath, options = {}) {
+  const extraArgs = ['--postprocess-report', '--Report', reportPath];
+  const uiVariant = String(options.uiVariant || '').trim();
+  if (uiVariant) {
+    extraArgs.push('--postprocess-report-ui', uiVariant);
+  }
+
   const child = spawn(
     process.execPath,
-    buildAppLaunchArgs(app, ['--postprocess-report', '--Report', reportPath]),
+    buildAppLaunchArgs(app, extraArgs),
     {
       detached: true,
       stdio: 'ignore'
@@ -132,9 +138,10 @@ function launchDetachedPostprocessReportViewer(app, reportPath) {
 }
 
 function createPendingPostprocessReportState(meta = {}) {
+  const startedAt = new Date().toISOString();
   return {
     status: 'running',
-    startedAt: new Date().toISOString(),
+    startedAt,
     finishedAt: null,
     durationMs: 0,
     inputPath: meta.inputPath || null,
@@ -152,6 +159,14 @@ function createPendingPostprocessReportState(meta = {}) {
       skippedExcessiveIroningSegments: 0,
       injectedSegments: 0
     },
+    progress: {
+      percent: 12,
+      phase: 'launching',
+      label: '显示后处理窗口',
+      detail: '正在显示执行窗口并加载正式报告界面。',
+      currentStepTitle: '准备进入实时报告',
+      updatedAt: startedAt
+    },
     steps: [
       {
         kind: 'status',
@@ -165,17 +180,19 @@ function createPendingPostprocessReportState(meta = {}) {
       }
     ],
     ui: {
-      autoCloseSeconds: 10
+      autoCloseSeconds: 10,
+      minimumProgressDurationMs: 1000
     }
   };
 }
 
 function createFailedPostprocessReportState(meta = {}, error) {
   const message = error && error.message ? error.message : String(error || 'Unknown error');
+  const finishedAt = new Date().toISOString();
   return {
     status: 'failed',
-    startedAt: new Date().toISOString(),
-    finishedAt: new Date().toISOString(),
+    startedAt: finishedAt,
+    finishedAt,
     durationMs: 0,
     inputPath: meta.inputPath || null,
     outputPath: meta.outputPath || null,
@@ -192,6 +209,14 @@ function createFailedPostprocessReportState(meta = {}, error) {
       skippedExcessiveIroningSegments: 0,
       injectedSegments: 0
     },
+    progress: {
+      percent: 100,
+      phase: 'failed',
+      label: '后处理失败',
+      detail: '执行过程中出现错误，请展开查看详细步骤。',
+      currentStepTitle: '后处理失败',
+      updatedAt: finishedAt
+    },
     steps: [
       {
         kind: 'error',
@@ -204,7 +229,8 @@ function createFailedPostprocessReportState(meta = {}, error) {
       }
     ],
     ui: {
-      autoCloseSeconds: 0
+      autoCloseSeconds: 0,
+      minimumProgressDurationMs: 1000
     }
   };
 }

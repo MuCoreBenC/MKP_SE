@@ -1011,6 +1011,67 @@ ironing_path_offset_mm = -0.15
     expect(lines.some((line: string) => line.includes('towerPlacement raw=(-20.0,300.0) effective=(5.0,228.0)'))).toBe(true);
   });
 
+  it('emits live report snapshots with progress metadata while detailed processing runs', () => {
+    const snapshots: Array<{
+      status: string;
+      progress: {
+        percent: number;
+        phase: string;
+        label: string;
+        currentStepTitle?: string;
+      };
+      steps: number;
+    }> = [];
+
+    const detailed = processGcodeContentDetailed(
+      [
+        '; travel_speed = 700',
+        '; nozzle_temperature = 220',
+        '; Z_HEIGHT: 0.40',
+        '; LAYER_HEIGHT: 0.20',
+        '; FEATURE: Support interface',
+        'G1 X10 Y10 E.500 F1200',
+        'G1 X11 Y11 E.200 F1200',
+        '; FEATURE: Outer wall',
+        'G1 X15 Y15 E.300',
+        '; layer num/total_layer_count: 2/33'
+      ].join('\n'),
+      {
+        toolhead: {
+          offset: { x: 0, y: 0, z: 0.3 },
+          speedLimit: 69
+        },
+        wiping: {
+          supportExtrusionMultiplier: 1
+        }
+      },
+      {
+        inputPath: 'D:\\print\\part.gcode',
+        outputPath: 'D:\\print\\part_processed.gcode',
+        configPath: 'D:\\print\\preset.json',
+        reportThrottleMs: 0,
+        onReportUpdate: (snapshot: any) => {
+          snapshots.push({
+            status: snapshot.status,
+            progress: snapshot.progress,
+            steps: snapshot.steps.length
+          });
+        }
+      }
+    );
+
+    expect(detailed.report.progress.percent).toBe(100);
+    expect(snapshots.length).toBeGreaterThan(0);
+    expect(snapshots.some((snapshot) => snapshot.status === 'running')).toBe(true);
+    expect(snapshots.some((snapshot) => snapshot.progress.percent >= 18 && snapshot.progress.percent < 100)).toBe(true);
+    expect(snapshots.some((snapshot) => snapshot.progress.phase === 'scan')).toBe(true);
+    expect(snapshots.some((snapshot) => snapshot.progress.phase === 'postprocess')).toBe(true);
+    expect(snapshots.at(-1)?.status).toBe('completed');
+    expect(snapshots.at(-1)?.progress.percent).toBe(100);
+    expect(snapshots.at(-1)?.progress.currentStepTitle).toBeTruthy();
+    expect(snapshots.at(-1)?.steps).toBeGreaterThan(0);
+  });
+
   it('replays AUTO fan placeholders and restores nozzle temperature with dry time after glueing', () => {
     const result = processGcodeContent(
       [

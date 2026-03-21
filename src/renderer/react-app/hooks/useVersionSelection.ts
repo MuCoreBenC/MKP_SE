@@ -10,6 +10,10 @@ export function useVersionSelection() {
   const [pending, setPending] = useState<VersionType | null>(null);
 
   const selectVersion = useCallback((versionType: VersionType | null) => {
+    if (versionType && !context.printer?.id) {
+      return;
+    }
+
     setPending(versionType);
     resetTransientState();
 
@@ -17,15 +21,19 @@ export function useVersionSelection() {
       if (typeof window.selectedVersion !== 'undefined') {
         window.selectedVersion = versionType;
       }
-      if (typeof window.saveUserConfig === 'function') {
-        window.saveUserConfig();
+      if (versionType && typeof window.__syncLegacyContextToModern__ === 'function' && context.printer?.id) {
+        window.__syncLegacyContextToModern__({
+          printerId: context.printer.id,
+          versionType
+        });
       }
       if (typeof window.updateSidebarVersionBadge === 'function') {
         window.updateSidebarVersionBadge(versionType);
       }
-      if (typeof window.renderDownloadVersions === 'function') {
-        window.renderDownloadVersions(context.printer);
+      if (typeof window.saveUserConfig === 'function') {
+        window.saveUserConfig();
       }
+      window.dispatchEvent(new CustomEvent('mkp:download-context-updated'));
     }
 
     setPending(null);

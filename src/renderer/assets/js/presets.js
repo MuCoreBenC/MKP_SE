@@ -5,6 +5,8 @@ let localSortMode = 'custom';
 let draggedCard = null;
 let presetContextMenuTarget = null;
 let lastRenderedLocalFiles = [];
+const LOCAL_SEARCH_OPEN_ICON = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>';
+const LOCAL_SEARCH_CLOSE_ICON = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M6 6l12 12M18 6L6 18"/></svg>';
 
 function getResolvedActiveFileName(printerId, versionType) {
   const legacyActiveFileName = localStorage.getItem(`mkp_current_script_${printerId}_${versionType}`);
@@ -93,64 +95,193 @@ function getCurrentPresetContext() {
 
 function loadLocalSortMode(printerId, versionType) {
   localSortMode = localStorage.getItem(getLocalSortKey(printerId, versionType)) || 'custom';
-  const select = document.getElementById('localSortSelect');
-  if (select) {
-    select.value = localSortMode;
+  syncLocalSortMenu();
+}
+
+function syncLocalSortMenu() {
+  document.querySelectorAll('[data-local-sort-option]').forEach((button) => {
+    const isActive = button.dataset.localSortOption === localSortMode;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function hideLocalToolbarMenu(options = {}) {
+  const menu = document.getElementById('localToolbarMenu');
+  const moreButton = document.getElementById('btnLocalToolbarMore');
+  if (menu) {
+    if (typeof window.hideFloatingSurface === 'function') {
+      window.hideFloatingSurface(menu, options);
+    } else {
+      menu.classList.add('hidden');
+    }
+    menu.setAttribute('aria-hidden', 'true');
+  }
+  if (moreButton) {
+    moreButton.setAttribute('aria-expanded', 'false');
+    moreButton.classList.remove('text-blue-500', 'bg-blue-50', 'dark:bg-blue-900/30');
   }
 }
 
+function openLocalToolbarMenu(event) {
+  const menu = document.getElementById('localToolbarMenu');
+  const moreButton = document.getElementById('btnLocalToolbarMore');
+  if (!menu || !moreButton) return;
+
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+
+  if (typeof window.hideAllFloatingSurfaces === 'function') {
+    window.hideAllFloatingSurfaces({ immediate: true });
+  }
+
+  syncLocalSortMenu();
+
+  const rect = moreButton.getBoundingClientRect();
+  const left = rect.right - Math.max(menu.offsetWidth || 216, 216);
+  const top = rect.bottom + 10;
+
+  if (typeof window.positionFloatingMenu === 'function') {
+    window.positionFloatingMenu(menu, left, top, { keepVisible: true, margin: 12, minWidth: 216 });
+  } else {
+    menu.style.left = `${Math.max(12, left)}px`;
+    menu.style.top = `${Math.max(12, top)}px`;
+  }
+
+  if (typeof window.showFloatingSurface === 'function') {
+    window.showFloatingSurface(menu);
+  } else {
+    menu.classList.remove('hidden');
+  }
+
+  menu.setAttribute('aria-hidden', 'false');
+  moreButton.setAttribute('aria-expanded', 'true');
+  moreButton.classList.add('text-blue-500', 'bg-blue-50', 'dark:bg-blue-900/30');
+}
+
+function toggleLocalToolbarMenu(event) {
+  const menu = document.getElementById('localToolbarMenu');
+  if (!menu) return;
+
+  if (menu.classList.contains('hidden')) {
+    openLocalToolbarMenu(event);
+  } else {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    hideLocalToolbarMenu();
+  }
+}
+
+function applyLocalSortMode(mode, event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  setLocalSortMode(mode);
+  hideLocalToolbarMenu({ immediate: true });
+}
+
+function bindLocalToolbarOverlays() {
+  if (window.__localToolbarOverlaysBound) return;
+  window.__localToolbarOverlaysBound = true;
+
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.local-toolbar-menu-shell')) {
+      hideLocalToolbarMenu({ immediate: true });
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    hideLocalToolbarMenu({ immediate: true });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      hideLocalToolbarMenu({ immediate: true });
+    }
+  });
+}
+
 function updateLocalManagerUI() {
+  const toolbar = document.querySelector('.local-preset-toolbar');
   const btnMultiSelect = document.getElementById('btnMultiSelect');
+  const btnSearchToggle = document.getElementById('btnLocalSearchToggle');
+  const btnLocalToolbarMore = document.getElementById('btnLocalToolbarMore');
   const checkUpdateBtn = document.getElementById('checkUpdateBtn');
-  const batchToolbar = document.getElementById('localBatchToolbar');
-  const batchSummary = document.getElementById('localBatchSummary');
+  const batchControls = document.getElementById('localHeaderBatchControls');
+  const infoAnchor = document.getElementById('localPresetInfoAnchor');
+  const batchSelectAllBtn = document.getElementById('btnSelectAllLocal');
+  const batchInvertBtn = document.getElementById('btnInvertLocal');
   const batchDeleteBtn = document.getElementById('btnBatchDelete');
-  const batchDuplicateBtn = document.getElementById('btnBatchDuplicate');
-  const sortSelect = document.getElementById('localSortSelect');
-  const managerDivider = document.getElementById('localManagerDivider');
+
+  if (toolbar) {
+    toolbar.classList.toggle('is-multi-select', isMultiSelectMode);
+  }
 
   if (btnMultiSelect) {
     btnMultiSelect.classList.toggle('text-blue-500', isMultiSelectMode);
     btnMultiSelect.classList.toggle('bg-blue-50', isMultiSelectMode);
     btnMultiSelect.classList.toggle('dark:bg-blue-900/30', isMultiSelectMode);
+    btnMultiSelect.title = isMultiSelectMode ? '退出多选' : '批量管理';
+    btnMultiSelect.setAttribute('aria-label', isMultiSelectMode ? '退出多选' : '批量管理');
   }
 
   if (checkUpdateBtn) {
     checkUpdateBtn.classList.toggle('hidden', isMultiSelectMode);
   }
 
-  if (sortSelect) {
-    sortSelect.classList.toggle('hidden', !isMultiSelectMode);
+  if (btnSearchToggle) {
+    btnSearchToggle.classList.remove('hidden');
   }
 
-  if (managerDivider) {
-    managerDivider.classList.toggle('hidden', !isMultiSelectMode);
+  if (btnLocalToolbarMore) {
+    btnLocalToolbarMore.classList.toggle('hidden', isMultiSelectMode);
+    if (isMultiSelectMode) {
+      hideLocalToolbarMenu({ immediate: true });
+    }
   }
 
-  if (batchToolbar) {
-    batchToolbar.classList.toggle('hidden', !isMultiSelectMode);
+  if (batchControls) {
+    batchControls.classList.toggle('is-visible', isMultiSelectMode);
+    batchControls.setAttribute('aria-hidden', isMultiSelectMode ? 'false' : 'true');
+  }
+
+  if (infoAnchor) {
+    infoAnchor.classList.toggle('is-hidden', isMultiSelectMode);
+    infoAnchor.setAttribute('aria-hidden', isMultiSelectMode ? 'true' : 'false');
+    infoAnchor.tabIndex = isMultiSelectMode ? -1 : 0;
+  }
+
+  if (batchSelectAllBtn) {
+    batchSelectAllBtn.textContent = '全选';
+  }
+
+  if (batchInvertBtn) {
+    batchInvertBtn.textContent = '反选';
   }
 
   const selectedCount = selectedLocalFiles.size;
-  if (batchSummary) {
-    batchSummary.textContent = selectedCount > 0
-      ? `已选中 ${selectedCount} 个预设`
-      : '批量模式已开启，可点击卡片或使用右键菜单。';
-  }
-
   if (batchDeleteBtn) {
-    batchDeleteBtn.textContent = selectedCount > 0 ? `删除选中 (${selectedCount})` : '删除选中';
+    batchDeleteBtn.textContent = '删除';
+    batchDeleteBtn.title = selectedCount > 0 ? `已选中 ${selectedCount} 个预设` : '请先选择预设';
     batchDeleteBtn.disabled = selectedCount === 0;
     batchDeleteBtn.classList.toggle('opacity-50', selectedCount === 0);
     batchDeleteBtn.classList.toggle('cursor-not-allowed', selectedCount === 0);
   }
+}
 
-  if (batchDuplicateBtn) {
-    batchDuplicateBtn.textContent = selectedCount > 0 ? `复制选中 (${selectedCount})` : '复制选中';
-    batchDuplicateBtn.disabled = selectedCount === 0;
-    batchDuplicateBtn.classList.toggle('opacity-50', selectedCount === 0);
-    batchDuplicateBtn.classList.toggle('cursor-not-allowed', selectedCount === 0);
-  }
+function updateLocalSearchToggleButton() {
+  const wrapper = document.getElementById('localSearchWrapper');
+  const button = document.getElementById('btnLocalSearchToggle');
+  const iconHost = button?.querySelector('[data-local-search-toggle-icon]');
+  if (!wrapper || !button || !iconHost) return;
+
+  const isExpanded = !wrapper.classList.contains('hidden');
+  button.title = isExpanded ? '收起搜索' : '搜索本地文件';
+  button.setAttribute('aria-label', isExpanded ? '收起搜索' : '搜索本地文件');
+  button.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+  button.classList.toggle('text-blue-500', isExpanded);
+  button.classList.toggle('bg-blue-50', isExpanded);
+  button.classList.toggle('dark:bg-blue-900/30', isExpanded);
+  iconHost.innerHTML = isExpanded ? LOCAL_SEARCH_CLOSE_ICON : LOCAL_SEARCH_OPEN_ICON;
 }
 
 function toggleLocalSearch() {
@@ -158,13 +289,17 @@ function toggleLocalSearch() {
   const input = document.getElementById('localSearchInput');
   if (!wrapper || !input) return;
 
+  hideLocalToolbarMenu({ immediate: true });
+
   if (wrapper.classList.contains('hidden')) {
     wrapper.classList.remove('hidden');
+    updateLocalSearchToggleButton();
     input.focus();
   } else {
     wrapper.classList.add('hidden');
     input.value = '';
     localSearchQuery = '';
+    updateLocalSearchToggleButton();
     const context = getCurrentPresetContext();
     if (context) {
       renderPresetList(context.printerData, context.versionType);
@@ -183,6 +318,7 @@ function handleLocalSearch(value) {
 function setLocalSortMode(mode) {
   const context = getCurrentPresetContext();
   localSortMode = mode || 'custom';
+  syncLocalSortMenu();
 
   if (context) {
     localStorage.setItem(getLocalSortKey(context.printerData.id, context.versionType), localSortMode);
@@ -233,6 +369,7 @@ function syncLocalSelectionCard(cardElement, isSelected) {
   const checkbox = cardElement.querySelector('.multi-checkbox');
   if (!checkbox) return;
 
+  checkbox.setAttribute('aria-checked', isSelected ? 'true' : 'false');
   checkbox.classList.toggle('bg-blue-500', isSelected);
   checkbox.classList.toggle('border-blue-500', isSelected);
   checkbox.classList.toggle('border-gray-300', !isSelected);
@@ -433,6 +570,8 @@ async function getManifestPresetsForPrinter(printerData, versionType) {
 function collectLocalPresetMatchers(printerData, versionType, manifestPresets = []) {
   const acceptedPrefixes = new Set();
   const acceptedFileNames = new Set();
+  const malformedPrefixes = new Set();
+  const normalizedPrinterId = String(printerData?.id || '').trim().toLowerCase();
   const normalizedVersionType = String(versionType || '').trim().toLowerCase();
 
   const registerFileName = (fileName) => {
@@ -448,7 +587,9 @@ function collectLocalPresetMatchers(printerData, versionType, manifestPresets = 
     }
   };
 
-  acceptedPrefixes.add(`${String(printerData?.id || '').trim().toLowerCase()}_${normalizedVersionType}_`);
+  acceptedPrefixes.add(`${normalizedPrinterId}_${normalizedVersionType}_`);
+  malformedPrefixes.add(`${normalizedPrinterId}_null_`);
+  malformedPrefixes.add(`${normalizedPrinterId}_undefined_`);
 
   const defaultPresetFile = printerData?.defaultPresets?.[versionType];
   if (defaultPresetFile) {
@@ -461,11 +602,13 @@ function collectLocalPresetMatchers(printerData, versionType, manifestPresets = 
 
   return {
     acceptedPrefixes,
-    acceptedFileNames
+    acceptedFileNames,
+    malformedPrefixes,
+    normalizedVersionType
   };
 }
 
-function matchesLocalPresetForPrinter(fileName, matcher) {
+function matchesLocalPresetForPrinter(fileName, matcher, presetType = null) {
   const normalizedFileName = String(fileName || '').trim().toLowerCase();
   if (!normalizedFileName || !matcher) {
     return false;
@@ -475,7 +618,16 @@ function matchesLocalPresetForPrinter(fileName, matcher) {
     return true;
   }
 
-  return Array.from(matcher.acceptedPrefixes).some((prefix) => normalizedFileName.startsWith(prefix));
+  if (Array.from(matcher.acceptedPrefixes).some((prefix) => normalizedFileName.startsWith(prefix))) {
+    return true;
+  }
+
+  const normalizedPresetType = String(presetType || '').trim().toLowerCase();
+  if (!normalizedPresetType || normalizedPresetType !== matcher.normalizedVersionType) {
+    return false;
+  }
+
+  return Array.from(matcher.malformedPrefixes || []).some((prefix) => normalizedFileName.startsWith(prefix));
 }
 
 async function fetchCloudPresetLogMap(printerData, versionType) {
@@ -591,7 +743,7 @@ async function renderPresetList(printerData, versionType) {
     : { success: false, data: [] };
 
   let localData = (listResult.success ? listResult.data : [])
-    .filter((item) => matchesLocalPresetForPrinter(item.fileName, localPresetMatcher))
+    .filter((item) => matchesLocalPresetForPrinter(item.fileName, localPresetMatcher, item.presetType))
     .map((item) => {
     const displayTitle = item.customName || item.displayName || item.fileName.replace(/\.json$/i, '');
     const originalBaseName = `${printerData.id}_${versionType}_v${item.realVersion}.json`.toLowerCase();
@@ -683,10 +835,11 @@ function renderListItems(container, releases, printerData, versionType, isLocal)
     const isJustDownloaded = isLocal && window.newlyDownloadedFile === release.fileName;
     const isSelected = selectedLocalFiles.has(release.fileName);
     const selectionClass = isSelected ? 'preset-selected border-blue-500 bg-blue-50/20' : 'border-gray-100 dark:border-[#333]';
+    const multiSelectClass = isLocal && isMultiSelectMode ? 'multi-select-enabled' : '';
 
     const item = document.createElement('div');
     item.dataset.releaseId = release.fileName;
-    item.className = `collapse-item transition-all border-b ${selectionClass} last:border-b-0 bg-white dark:bg-gray-800 ${isJustDownloaded ? 'flash-success' : ''}`;
+    item.className = `collapse-item local-preset-card transition-all border-b ${selectionClass} last:border-b-0 bg-white dark:bg-gray-800 ${isJustDownloaded ? 'flash-success' : ''} ${multiSelectClass}`;
 
     const buttonText = isLocal ? (isApplied ? '已应用' : '应用') : '下载';
     const buttonClass = isLocal
@@ -704,12 +857,14 @@ function renderListItems(container, releases, printerData, versionType, isLocal)
       : '';
 
     const appliedBadge = isApplied
-      ? '<span class="applied-badge px-2 py-0.5 rounded text-[10px] font-medium theme-btn-solid flex items-center gap-1 shadow-sm flex-shrink-0"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>当前使用</span>'
+      ? '<span class="applied-badge px-2 py-0.5 rounded text-[10px] font-medium theme-btn-solid flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>当前使用</span>'
       : '';
 
     const checkboxHtml = isLocal
-      ? `<div class="multi-checkbox flex-shrink-0 w-4 h-4 rounded border-2 mr-3 transition-colors flex items-center justify-center ${isMultiSelectMode ? 'flex' : 'hidden'} ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300 dark:border-gray-600'}">
-          <svg class="w-3 h-3 text-white transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+      ? `<div class="multi-checkbox-shell" aria-hidden="${isMultiSelectMode ? 'false' : 'true'}">
+          <div class="multi-checkbox flex-shrink-0 w-4 h-4 rounded border-2 transition-colors flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300 dark:border-gray-600'}" role="checkbox" aria-checked="${isSelected ? 'true' : 'false'}">
+            <svg class="w-3 h-3 text-white transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+          </div>
         </div>`
       : '';
 
@@ -746,11 +901,13 @@ function renderListItems(container, releases, printerData, versionType, isLocal)
           ${appliedBadge}
         </div>
         <div class="flex items-center gap-3 flex-shrink-0">
-          <div class="flex items-center gap-2 action-tools ${isMultiSelectMode ? 'hidden' : 'flex'}">
+          <div class="flex items-center gap-2 action-tools">
             <button class="${buttonClass}">${buttonText}</button>
             ${toolHtml}
           </div>
-          <svg class="w-5 h-5 text-gray-400 collapse-arrow transition-transform duration-200 toggle-arrow ${isMultiSelectMode ? 'hidden' : 'block'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          <span class="collapse-arrow-shell">
+            <svg class="w-5 h-5 text-gray-400 collapse-arrow transition-transform duration-200 toggle-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </span>
           ${dragHtml}
         </div>
       </div>
@@ -928,6 +1085,12 @@ function renderDownloadVersions(printerData) {
   const resolvedVersionType = context.selectedVersionType;
 
   if (!resolvedPrinter) {
+    window.dispatchEvent(new CustomEvent('mkp:download-context-updated', {
+      detail: {
+        printer: null,
+        selectedVersionType: null
+      }
+    }));
     return;
   }
 
@@ -973,6 +1136,15 @@ function renderDownloadVersions(printerData) {
   if (typeof window.refreshCalibrationAvailability === 'function') {
     window.refreshCalibrationAvailability();
   }
+
+  window.dispatchEvent(new CustomEvent('mkp:download-context-updated', {
+    detail: {
+      printer: resolvedPrinter,
+      selectedVersionType: Object.prototype.hasOwnProperty.call(window, 'selectedVersion')
+        ? window.selectedVersion ?? null
+        : resolvedVersionType ?? null
+    }
+  }));
 }
 
 async function fetchCloudPresets(printerId, versionType) {
@@ -1317,7 +1489,7 @@ function handleApplyLocal(releaseId, fileName, printerData, versionType = null, 
     if (isActiveCard) {
       badgeContainer.insertAdjacentHTML(
         'beforeend',
-        '<span class="applied-badge px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 shadow-sm animate-scale-in theme-btn-solid"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>当前使用</span>'
+        '<span class="applied-badge px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 shadow-sm animate-scale-in theme-btn-solid whitespace-nowrap"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>当前使用</span>'
       );
     }
   });
@@ -1376,15 +1548,20 @@ async function handleDuplicateLocal(fileName, printerId, versionType, realVersio
       throw new Error('当前版本缺少 duplicate-preset 接口，请重启后重试。');
     }
 
-    const result = await window.mkpAPI.duplicatePreset({ fileName, printerId, versionType, realVersion });
+    const context = getCurrentPresetContext();
+    const resolvedVersionType = context?.versionType || versionType || null;
+    const result = await window.mkpAPI.duplicatePreset({
+      fileName,
+      printerId,
+      versionType: resolvedVersionType,
+      realVersion
+    });
     if (!result.success) {
       throw new Error(result.error || '复制失败');
     }
 
     window.newlyDownloadedFile = result.newFileName;
-    const context = getCurrentPresetContext();
     const printerData = context?.printerData || (typeof getPrinterObj === 'function' ? getPrinterObj(printerId) : null);
-    const resolvedVersionType = context?.versionType || versionType;
     if (printerData) {
       await renderPresetList(printerData, resolvedVersionType);
     }
@@ -1572,10 +1749,9 @@ function bindPresetContextMenu() {
 
 function initPresetManagerText() {
   const textMap = {
-    btnSelectAllLocal: '全选当前',
-    btnInvertLocal: '反选当前',
-    btnBatchDuplicate: '复制选中',
-    btnBatchDelete: '删除选中',
+    btnSelectAllLocal: '全选',
+    btnInvertLocal: '反选',
+    btnBatchDelete: '删除',
     ctxBtnApply: '立即应用',
     ctxBtnEdit: '编辑参数',
     ctxBtnCopy: '复制副本',
@@ -1595,31 +1771,22 @@ function initPresetManagerText() {
   const multiSelectButton = document.getElementById('btnMultiSelect');
   if (multiSelectButton) {
     multiSelectButton.title = '批量管理';
+    multiSelectButton.setAttribute('aria-label', '批量管理');
   }
 
-  const batchSummary = document.getElementById('localBatchSummary');
-  if (batchSummary) {
-    batchSummary.textContent = '批量模式已开启，可点击卡片或使用右键菜单。';
-  }
+  updateLocalSearchToggleButton();
+  syncLocalSortMenu();
 
   const checkUpdateText = document.querySelector('#checkUpdateBtn span');
   if (checkUpdateText) {
     checkUpdateText.textContent = '检查预设';
-  }
-
-  const sortSelect = document.getElementById('localSortSelect');
-  if (sortSelect) {
-    const options = sortSelect.querySelectorAll('option');
-    if (options[0]) options[0].textContent = '自定义排序';
-    if (options[1]) options[1].textContent = '版本从新到旧';
-    if (options[2]) options[2].textContent = '最近修改';
-    if (options[3]) options[3].textContent = '名称 A-Z';
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   initPresetManagerText();
   bindPresetContextMenu();
+  bindLocalToolbarOverlays();
   updateLocalManagerUI();
 });
 
@@ -1641,3 +1808,5 @@ window.handleDeleteLocal = handleDeleteLocal;
 window.clearOnlineListUI = clearOnlineListUI;
 window.checkOnlineUpdates = checkOnlineUpdates;
 window.setLocalSortMode = setLocalSortMode;
+window.toggleLocalToolbarMenu = toggleLocalToolbarMenu;
+window.applyLocalSortMode = applyLocalSortMode;

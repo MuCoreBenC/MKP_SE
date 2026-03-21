@@ -24,6 +24,7 @@ let isUserConfigPersistenceSuspended = false;
 let isCrossWindowSyncBound = false;
 let lastPresetMutationSignalTs = 0;
 let presetMutationPromptInFlight = false;
+let supportBundleExportInFlight = false;
 
 let APP_REAL_VERSION = '0.0.0';
 const ACTIVE_PRESET_UPDATED_EVENT = 'mkp:active-preset-updated';
@@ -2250,8 +2251,19 @@ async function updateScriptPathDisplay() {
       return;
     }
 
-    const exePath = await window.mkpAPI.getExePath();
-    const command = `"${exePath}" --Json "${presetPath}" --Gcode`;
+    const cliLaunchInfo = window.mkpAPI?.getCliLaunchInfo
+      ? await window.mkpAPI.getCliLaunchInfo()
+      : {
+          exePath: await window.mkpAPI.getExePath(),
+          appPath: null,
+          defaultApp: false
+        };
+    const commandParts = [`"${cliLaunchInfo.exePath}"`];
+    if (cliLaunchInfo.defaultApp && cliLaunchInfo.appPath) {
+      commandParts.push(`"${cliLaunchInfo.appPath}"`);
+    }
+    commandParts.push(`--Json "${presetPath}" --Gcode`);
+    const command = commandParts.join(' ');
     
     scriptInput.value = command;
     if (scriptInput._scrollAnimId) cancelAnimationFrame(scriptInput._scrollAnimId);
@@ -2450,7 +2462,10 @@ async function refreshCalibrationAvailability() {
     }
   });
 
-  document.querySelectorAll('button[onclick^="saveZOffset"], button[onclick^="saveXYOffset"]').forEach((button) => {
+  [
+    document.getElementById('saveZOffsetBtn'),
+    document.getElementById('saveXYOffsetBtn')
+  ].forEach((button) => {
     applyCalibrationButtonState(button, enabled);
   });
 
@@ -2578,10 +2593,10 @@ function generateZGrid() {
     const isSelected = (selectedGridOffset === offset);
 
     const boxBg = offset === 0 ? "bg-[#C0C0C0] dark:bg-[#555]" : "bg-[#D9D9D9] dark:bg-[#444]";
-    const dotHtml = offset === 0 ? `<div class="absolute inset-0 m-auto w-2 h-2 rounded-full bg-gray-500 dark:bg-gray-400"></div>` : "";
+    const dotHtml = offset === 0 ? `<div class="z-block-dot absolute inset-0 m-auto w-2 h-2 rounded-full"></div>` : "";
     const textSize = offset === 0 ? "text-3xl font-black leading-none" : "text-base font-medium";
 
-    let boxBorder = isSelected ? "border-current theme-text" : "border-transparent group-hover:border-gray-900 dark:group-hover:border-gray-100";
+    let boxBorder = isSelected ? "border-current theme-text" : "border-transparent group-hover:border-gray-400 dark:group-hover:border-gray-300";
     let textColor = isSelected ? "theme-text" : (offset === 0 ? "text-black dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-gray-100" : "text-black dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100");
 
     html += `
@@ -2610,7 +2625,7 @@ function updateZGridSelection() {
     const boxBg = offset === 0 ? "bg-[#C0C0C0] dark:bg-[#555]" : "bg-[#D9D9D9] dark:bg-[#444]";
     const textSize = offset === 0 ? "text-3xl font-black leading-none" : "text-base font-medium";
 
-    let boxBorder = isSelected ? "border-current theme-text" : "border-transparent group-hover:border-gray-900 dark:group-hover:border-gray-100";
+    let boxBorder = isSelected ? "border-current theme-text" : "border-transparent group-hover:border-gray-400 dark:group-hover:border-gray-300";
     let textColor = isSelected ? "theme-text" : (offset === 0 ? "text-black dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-gray-100" : "text-black dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100");
 
     box.className = `z-block-box shrink-0 rounded-[7px] border-2 shadow-sm relative flex items-center justify-center transition-colors ${boxBg} ${boxBorder}`;
@@ -2663,7 +2678,7 @@ async function saveZOffset(btnElement) {
     return;
   }
   
-  if (!btnElement) btnElement = document.querySelector('button[onclick^="saveZOffset"]');
+  if (!btnElement) btnElement = document.getElementById('saveZOffsetBtn');
 
   const SPIN_ICON = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
   let resetLoading = () => {};
@@ -2864,7 +2879,7 @@ async function openXYModel() {
 
 async function saveXYOffset(btnElement) {
   if (!(await ensureCalibrationReady())) return;
-  if (!btnElement) btnElement = document.querySelector('button[onclick^="saveXYOffset"]');
+  if (!btnElement) btnElement = document.getElementById('saveXYOffsetBtn');
 
   const preset = await loadActivePreset(true);
   if (!preset) {
@@ -2936,12 +2951,14 @@ async function saveXYOffset(btnElement) {
   }
 }
 
+window.copyPath = copyPath;
 window.updateScriptPathDisplay = updateScriptPathDisplay;
 window.refreshCalibrationAvailability = refreshCalibrationAvailability;
 window.openZGridDirectly = openZGridDirectly;
 window.openZModel = openZModel;
 window.openXYGridDirectly = openXYGridDirectly;
 window.openXYModel = openXYModel;
+window.saveZOffset = saveZOffset;
 window.selectXYOffset = selectXYOffset;
 window.saveXYOffset = saveXYOffset;
 window.refreshCalibrationOffsets = refreshCalibrationOffsets;
@@ -3307,6 +3324,71 @@ async function copyQQGroup(btnElement) {
       confirmText: '确定' ,
       allowOutsideClick: true
     });
+  }
+}
+
+async function exportDiagnosticBundle(btnElement) {
+  if (supportBundleExportInFlight) {
+    return;
+  }
+
+  if (!window.mkpAPI?.exportBugReport) {
+    await MKPModal.alert({ title: '功能不可用', msg: '当前版本未接入诊断导出能力。', type: 'error' });
+    return;
+  }
+
+  supportBundleExportInFlight = true;
+  const SPIN_ICON = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+  const CHECK_ICON = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+  const reset = btnElement ? setButtonStatus(btnElement, '122px', '生成中...', SPIN_ICON, 'btn-expand-theme') : { unlock: () => {} };
+
+  try {
+    const result = await window.mkpAPI?.exportBugReport();
+    if (!result?.success) {
+      if (btnElement) reset.unlock();
+      await MKPModal.alert({ title: '导出失败', msg: result?.error || '无法生成诊断报告。', type: 'error' });
+      return;
+    }
+
+    Logger.info(`[SupportBundle] exported fingerprint=${result.fingerprint || 'unknown'} reused=${result?.reused ? 1 : 0} dir=${result.exportDir || ''}`);
+
+    if (btnElement) {
+      const resetSuccess = setButtonStatus(btnElement, '104px', '已导出', CHECK_ICON, 'btn-expand-green');
+      setTimeout(resetSuccess, 1200);
+    }
+
+    const successMessage = result?.reused
+      ? `已复用最近 1 分钟内的诊断包，没有重新创建新文件夹。\n问题指纹：${result.fingerprint || '未知'}\n${result.summary || ''}`.trim()
+      : `已生成到桌面 mkpse_log 文件夹。\n问题指纹：${result.fingerprint || '未知'}\n${result.summary || ''}`.trim();
+    const successAlertOptions = {
+      title: '诊断已导出',
+      msg: successMessage,
+      type: 'success',
+      confirmText: result?.reused ? '打开文件夹' : '知道了'
+    };
+
+    if (result?.reused) {
+      successAlertOptions.title = '已复用最近诊断';
+    }
+
+    await MKPModal.alert(successAlertOptions);
+
+    if (result?.reused && window.mkpAPI?.openLastSupportBundleFolder) {
+      const openResult = await window.mkpAPI.openLastSupportBundleFolder();
+      if (!openResult?.success) {
+        await MKPModal.alert({
+          title: '打开失败',
+          msg: openResult?.error || '无法打开最近的诊断包文件夹。',
+          type: 'error'
+        });
+      }
+    }
+  } catch (error) {
+    if (btnElement) reset.unlock();
+    Logger.error(`[SupportBundle] export failed: ${error.message}`);
+    await MKPModal.alert({ title: '导出异常', msg: error.message, type: 'error' });
+  } finally {
+    supportBundleExportInFlight = false;
   }
 }
 

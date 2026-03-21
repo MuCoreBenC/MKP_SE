@@ -7,19 +7,19 @@ contextBridge.exposeInMainWorld('mkpAPI', {
   downloadFile: (fileUrl, fileName) => ipcRenderer.invoke('download-file', fileUrl, fileName),
   deleteFile: (fileName) => ipcRenderer.invoke('delete-file', fileName),
 
-  // 【新增】：核心路径与参数读写
-  getExePath: () => ipcRenderer.invoke('get-exe-path'), // 获取 EXE 程序路径
-  getUserDataPath: () => ipcRenderer.invoke('get-userdata-path'), // 获取配置存放路径
+  getExePath: () => ipcRenderer.invoke('get-exe-path'),
+  getCliLaunchInfo: () => ipcRenderer.invoke('get-cli-launch-info'),
+  getUserDataPath: () => ipcRenderer.invoke('get-userdata-path'),
   readPreset: (filePath) => ipcRenderer.invoke('read-preset', filePath),
   writePreset: (filePath, updates) => ipcRenderer.invoke('write-preset', filePath, updates),
   overwritePreset: (filePath, data) => ipcRenderer.invoke('overwrite-preset', filePath, data),
   ensurePresetBackup: (filePath) => ipcRenderer.invoke('ensure-preset-backup', filePath),
   readPresetBackup: (filePath) => ipcRenderer.invoke('read-preset-backup', filePath),
 
-  // 【新增】：智能打开校准模型
   openCalibrationModel: (type, forceOpenWith) => ipcRenderer.invoke('open-calibration-model', type, forceOpenWith),
   setNativeTheme: (mode) => ipcRenderer.send('set-native-theme', mode),
-  exportBugReport: () => ipcRenderer.send('export-bug-report'),
+  exportBugReport: () => ipcRenderer.invoke('export-bug-report'),
+  openLastSupportBundleFolder: () => ipcRenderer.invoke('open-last-support-bundle-folder'),
   getLocalPresets: () => ipcRenderer.invoke('get-local-presets'),
   listLocalPresetsDetailed: (query) => ipcRenderer.invoke('list-local-presets-detailed', query),
   applyHotUpdate: (payload) => ipcRenderer.invoke('apply-hot-update', payload),
@@ -64,7 +64,4 @@ contextBridge.exposeInMainWorld('mkpAPI', {
   closePostprocessReportWindow: () => ipcRenderer.invoke('close-postprocess-report-window'),
   exportPostprocessTrace: (mode) => ipcRenderer.invoke('export-postprocess-trace', mode),
   exportPostprocessGcode: () => ipcRenderer.invoke('export-postprocess-gcode')
-  
-
-
 });

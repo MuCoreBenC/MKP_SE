@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 const htmlSource = readFileSync('D:/trae/MKP_SE/src/renderer/index.html', 'utf8');
 const appSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/app.js', 'utf8');
 const uiTextSource = readFileSync('D:/trae/MKP_SE/src/renderer/assets/js/ui-text.js', 'utf8');
+const preloadSource = readFileSync('D:/trae/MKP_SE/preload.js', 'utf8');
 
 describe('settings TOML conversion runtime smoke', () => {
   it('renders a dedicated advanced conversion card separate from the bug-report card', () => {
@@ -48,8 +49,28 @@ describe('settings TOML conversion runtime smoke', () => {
   it('updates the bug-report copy through dedicated ids instead of broad mt-6 selectors', () => {
     expect(uiTextSource).toContain("document.getElementById('settingBugReportTitle')");
     expect(uiTextSource).toContain("document.getElementById('settingBugReportDesc')");
+    expect(uiTextSource).toContain("document.getElementById('btn-setting-bug-report')");
     expect(uiTextSource).not.toContain("document.querySelector('#setting-update .mt-6 .text-sm.font-medium')");
     expect(uiTextSource).not.toContain("document.querySelector('#setting-update .mt-6 .text-xs.text-gray-500')");
+  });
+
+  it('exports the diagnostic bundle through a dedicated async settings action and waits for the main-process result', () => {
+    expect(htmlSource).toContain('id="btn-setting-bug-report"');
+    expect(htmlSource).toContain('onclick="exportDiagnosticBundle(this)"');
+    expect(appSource).toMatch(/async function exportDiagnosticBundle\(btnElement\) \{/);
+    expect(appSource).toContain('let supportBundleExportInFlight = false;');
+    expect(appSource).toMatch(/if \(supportBundleExportInFlight\) \{\s*return;\s*\}/);
+    expect(appSource).toContain('supportBundleExportInFlight = true;');
+    expect(appSource).toMatch(/window\.mkpAPI\?\.exportBugReport/);
+    expect(appSource).toContain('result?.reused');
+    expect(appSource).toContain('window.mkpAPI?.openLastSupportBundleFolder');
+    expect(appSource).toContain("confirmText: result?.reused ? '打开文件夹' : '知道了'");
+    expect(appSource).toContain("setButtonStatus(btnElement, '122px', '生成中...', SPIN_ICON, 'btn-expand-theme')");
+    expect(appSource).toContain("title: '诊断已导出'");
+    expect(appSource).toContain('桌面 mkpse_log 文件夹');
+    expect(appSource).toMatch(/finally \{\s*supportBundleExportInFlight = false;\s*\}/);
+    expect(preloadSource).toContain("exportBugReport: () => ipcRenderer.invoke('export-bug-report')");
+    expect(preloadSource).toContain("openLastSupportBundleFolder: () => ipcRenderer.invoke('open-last-support-bundle-folder')");
   });
 
   it('uses a stable two-column card layout so button width changes do not reflow the description block', () => {

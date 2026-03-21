@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme-mode="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MKP 后处理进度</title>
+  <link rel="stylesheet" href="assets/css/tailwind-compiled.css">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    (function() {
+      try {
+        const savedMode = localStorage.getItem('themeMode') || 'light';
+        const isDark = savedMode === 'dark' || savedMode === 'oled' || (savedMode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme-mode', savedMode);
+        if (isDark) document.documentElement.classList.add('dark');
+        if (savedMode === 'oled') document.documentElement.classList.add('oled');
+      } catch (error) {
+        console.warn('[PostprocessReportV2] theme mode bootstrap failed', error);
+      }
+
+      try {
+        const palette = {
+          blue: '59, 130, 246',
+          emerald: '16, 185, 129',
+          violet: '139, 92, 246',
+          orange: '245, 158, 11',
+          rose: '244, 63, 94',
+          pink: '236, 72, 153',
+          green: '0, 174, 66',
+          purple: '168, 85, 247'
+        };
+        const savedColor = localStorage.getItem('appThemeColor') || 'blue';
+        if (savedColor === 'custom') {
+          const customRgb = localStorage.getItem('customThemeRgb') || '59, 130, 246';
+          document.documentElement.style.setProperty('--primary-rgb', customRgb);
+        } else if (palette[savedColor]) {
+          document.documentElement.style.setProperty('--primary-rgb', palette[savedColor]);
+        }
+      } catch (error) {
+        console.warn('[PostprocessReportV2] theme color bootstrap failed', error);
+      }
+    })();
+  </script>
+  <style>
+    :root {
+      --v2-bg: var(--bg-page);
+      --v2-panel: var(--bg-card);
+      --v2-panel-muted: var(--bg-input);
+      --v2-border: var(--border);
+      --v2-text: var(--text-primary);
+      --v2-muted: var(--text-secondary);
+      --v2-accent: rgb(var(--primary-rgb));
+      --v2-accent-soft: rgba(var(--primary-rgb), 0.12);
+      --v2-accent-line: rgba(var(--primary-rgb), 0.16);
+      --v2-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+      --v2-success: #10b981;
+      --v2-danger: #ef4444;
+    }
+
+    html.dark {
+      --v2-shadow: 0 18px 46px rgba(0, 0, 0, 0.32);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 0 !important;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      color: var(--v2-text);
+      background:
+        linear-gradient(180deg, rgba(var(--primary-rgb), 0.055) 0%, rgba(var(--primary-rgb), 0.018) 138px, rgba(var(--primary-rgb), 0) 100%),
+        var(--v2-bg);
+      overflow: auto;
+    }
+
+    .prototype-app {
+      min-height: 100vh;
+      padding: 16px;
+      display: flex;
+    }
+
+    .prototype-shell {
+      width: 100%;
+      margin: 0 auto;
+      min-height: calc(100vh - 32px);
+      border-radius: 22px;
+      border: 1px solid var(--v2-border);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: var(--v2-shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    html.dark .prototype-shell {
+      background: rgba(17, 24, 39, 0.90);
+    }
+
+    .prototype-shell::before {
+      content: "";
+      display: block;
+      height: 4px;
+      background: linear-gradient(90deg, rgba(var(--primary-rgb), 0.22) 0%, rgba(var(--primary-rgb), 0.78) 45%, rgba(var(--primary-rgb), 0.22) 100%);
+    }
+
+    .prototype-stage {
+      transition: opacity 220ms ease, transform 240ms ease, visibility 0s linear 220ms;
+    }
+
+    .prototype-boot {
+      position: absolute;
+      inset: 4px 0 0;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      padding: 24px 22px 22px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.90) 100%);
+      visibility: visible;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    html.dark .prototype-boot {
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.96) 0%, rgba(17, 24, 39, 0.90) 100%);
+    }
+
+    .prototype-shell.is-runtime-visible .prototype-boot {
+      visibility: hidden;
+      opacity: 0;
+      transform: translateY(-10px);
+      pointer-events: none;
+    }
+
+    .prototype-boot-card {
+      width: 100%;
+      max-width: 540px;
+      display: grid;
+      gap: 16px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .boot-mark {
+      width: 52px;
+      height: 52px;
+      border-radius: 18px;
+      border: 1px solid var(--v2-accent-line);
+      background: rgba(var(--primary-rgb), 0.10);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: 0 8px 20px rgba(var(--primary-rgb), 0.10);
+    }
+
+    .boot-mark img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .boot-caption {
+      margin: 0;
+      color: var(--v2-muted);
+      font-size: 12px;
+      line-height: 1.6;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .boot-title {
+      margin: 0;
+      font-size: clamp(28px, 4.8vw, 38px);
+      line-height: 1.08;
+      letter-spacing: -0.05em;
+      font-weight: 800;
+    }
+
+    .boot-copy {
+      margin: 0;
+      color: var(--v2-muted);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .boot-spinner {
+      width: 48px;
+      height: 48px;
+      color: var(--v2-accent);
+      animation: boot-spinner-rotate 1.1s linear infinite;
+      transform-origin: 50% 50%;
+    }
+
+    .boot-spinner-track {
+      opacity: 0.18;
+    }
+
+    .boot-spinner-arc {
+      stroke-linecap: round;
+      stroke-dasharray: 78;
+      stroke-dashoffset: 28;
+      animation: boot-spinner-dash 1.4s ease-in-out infinite;
+    }
+
+    .boot-progress {
+      width: min(100%, 420px);
+      display: grid;
+      gap: 10px;
+    }
+
+    .boot-progress-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--v2-muted);
+      font-size: 12px;
+      line-height: 1.6;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .boot-progress-track {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(var(--primary-rgb), 0.10);
+      overflow: hidden;
+      border: 1px solid rgba(var(--primary-rgb), 0.10);
+    }
+
+    .boot-progress-fill {
+      width: 32%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(var(--primary-rgb), 0.16) 0%, rgba(var(--primary-rgb), 0.84) 50%, rgba(var(--primary-rgb), 0.16) 100%);
+      animation: boot-progress-slide 1.25s ease-in-out infinite;
+      transform: translateX(-120%);
+    }
+
+    .prototype-runtime {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      z-index: 1;
+      visibility: hidden;
+      opacity: 0;
+      transform: translateY(12px);
+      pointer-events: none;
+      transition: opacity 220ms ease, transform 240ms ease, visibility 0s linear 220ms;
+    }
+
+    .prototype-shell.is-runtime-visible .prototype-runtime {
+      visibility: visible;
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+      transition-delay: 40ms;
+    }
+
+    .prototype-main {
+      flex: 1 1 auto;
+      padding: 20px 22px 18px;
+    }
+
+    .prototype-runtime-content {
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    .prototype-runtime-content.is-swap-out {
+      opacity: 0.02;
+      transform: translateY(8px);
+    }
+
+    .prototype-runtime-content.is-swap-in {
+      opacity: 0.02;
+      transform: translateY(-8px);
+    }
+
+    .prototype-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .prototype-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      flex: 1 1 240px;
+    }
+
+    .prototype-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      border: 1px solid var(--v2-accent-line);
+      background: rgba(var(--primary-rgb), 0.10);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .prototype-logo img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .prototype-overline {
+      display: block;
+      color: var(--v2-muted);
+      font-size: 11px;
+      line-height: 1.4;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .prototype-window-title {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.3;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .status-running {
+      color: var(--v2-accent);
+      background: rgba(var(--primary-rgb), 0.10);
+      border-color: rgba(var(--primary-rgb), 0.16);
+    }
+
+    .status-completed {
+      color: var(--v2-success);
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.18);
+    }
+
+    .status-failed {
+      color: var(--v2-danger);
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.18);
+    }
+
+    .prototype-kicker {
+      margin: 0;
+      color: var(--v2-muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .prototype-title {
+      margin: 8px 0 0;
+      font-size: 27px;
+      line-height: 1.12;
+      letter-spacing: -0.035em;
+      font-weight: 800;
+    }
+
+    .prototype-summary {
+      margin: 10px 0 0;
+      color: var(--v2-muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .prototype-actions {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .feedback {
+      margin-top: 12px;
+      color: var(--v2-muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .feedback.is-success {
+      color: var(--v2-success);
+    }
+
+    .feedback.is-error {
+      color: var(--v2-danger);
+    }
+
+    .prototype-progress {
+      margin-top: 18px;
+      padding: 16px 16px 14px;
+      border-radius: 18px;
+      border: 1px solid var(--v2-border);
+      background: linear-gradient(180deg, var(--v2-panel) 0%, var(--v2-panel-muted) 100%);
+      display: grid;
+      gap: 12px;
+    }
+
+    .prototype-progress.is-failed {
+      border-color: rgba(239, 68, 68, 0.18);
+    }
+
+    .progress-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .progress-track {
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid rgba(var(--primary-rgb), 0.12);
+      background: rgba(var(--primary-rgb), 0.10);
+    }
+
+    .prototype-progress.is-failed .progress-track {
+      border-color: rgba(239, 68, 68, 0.16);
+      background: rgba(239, 68, 68, 0.10);
+    }
+
+    .progress-fill {
+      position: relative;
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(var(--primary-rgb), 0.78) 0%, rgb(var(--primary-rgb)) 100%);
+      box-shadow: 0 6px 16px rgba(var(--primary-rgb), 0.16);
+    }
+
+    .prototype-progress.is-failed .progress-fill {
+      background: linear-gradient(90deg, rgba(239, 68, 68, 0.78) 0%, #ef4444 100%);
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.16);
+    }
+
+    .progress-percent {
+      min-width: 56px;
+      text-align: right;
+      font-size: 20px;
+      line-height: 1;
+      font-weight: 800;
+      color: var(--v2-accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .prototype-progress.is-failed .progress-percent {
+      color: var(--v2-danger);
+    }
+
+    .progress-step {
+      color: var(--v2-muted);
+      font-size: 12px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .prototype-meta {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .prototype-metric {
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid var(--v2-border);
+      background: linear-gradient(180deg, var(--v2-panel) 0%, rgba(var(--primary-rgb), 0.035) 100%);
+      min-width: 0;
+    }
+
+    .prototype-metric span {
+      display: block;
+      color: var(--v2-muted);
+      font-size: 11px;
+      line-height: 1.5;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .prototype-metric strong {
+      display: block;
+      margin-top: 6px;
+      color: var(--v2-text);
+      font-size: 14px;
+      line-height: 1.5;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .prototype-btn {
+      appearance: none;
+      border: 1px solid var(--v2-border);
+      background: var(--v2-panel);
+      color: var(--v2-text);
+      border-radius: 14px;
+      padding: 11px 16px;
+      min-height: 44px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+    }
+
+    .prototype-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(var(--primary-rgb), 0.28);
+      background: var(--v2-panel-muted);
+    }
+
+    .prototype-btn-primary {
+      background: rgb(var(--primary-rgb));
+      border-color: rgb(var(--primary-rgb));
+      color: #ffffff;
+    }
+
+    .prototype-btn-primary:hover {
+      background: rgba(var(--primary-rgb), 0.92);
+      color: #ffffff;
+    }
+
+    .prototype-btn[disabled] {
+      opacity: 0.48;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .prototype-detail {
+      display: none;
+      border-top: 1px solid var(--v2-border);
+      padding: 16px 22px 20px;
+      background: rgba(var(--primary-rgb), 0.018);
+    }
+
+    .prototype-detail.is-visible {
+      display: block;
+    }
+
+    .detail-toolbar,
+    .detail-actions,
+    .detail-metadata {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .detail-toolbar {
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .view-toggle-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px;
+      border-radius: 14px;
+      border: 1px solid var(--v2-border);
+      background: var(--v2-panel);
+    }
+
+    .view-toggle-btn {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--v2-muted);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .view-toggle-btn.is-active {
+      color: var(--v2-text);
+      background: rgba(var(--primary-rgb), 0.14);
+    }
+
+    .detail-card,
+    .step-card {
+      border-radius: 16px;
+      border: 1px solid var(--v2-border);
+      background: var(--v2-panel);
+    }
+
+    .detail-metadata {
+      margin-top: 14px;
+    }
+
+    .detail-card {
+      flex: 1 1 280px;
+      padding: 14px 16px;
+      min-width: 0;
+    }
+
+    .detail-card strong {
+      display: block;
+      font-size: 12px;
+      line-height: 1.6;
+      margin-bottom: 8px;
+    }
+
+    .detail-card code {
+      display: block;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      color: var(--v2-text);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .steps-container {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .step-card {
+      padding: 14px 16px;
+    }
+
+    .step-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .step-title {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+      font-weight: 700;
+    }
+
+    .step-kind {
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: rgba(var(--primary-rgb), 0.10);
+      border: 1px solid rgba(var(--primary-rgb), 0.12);
+      color: var(--v2-muted);
+      font-size: 11px;
+      line-height: 1;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .step-body {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--v2-text);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .step-technical pre,
+    .step-data pre {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--v2-border);
+      background: var(--v2-panel-muted);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--v2-text);
+    }
+
+    .step-data {
+      margin-top: 10px;
+    }
+
+    @media (max-width: 720px) {
+      .prototype-app {
+        padding: 12px;
+      }
+
+      .prototype-shell {
+        min-height: calc(100vh - 24px);
+      }
+
+      .prototype-main,
+      .prototype-detail {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .prototype-title {
+        font-size: 24px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .prototype-meta {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .prototype-actions,
+      .detail-actions {
+        width: 100%;
+      }
+
+      .prototype-actions .prototype-btn,
+      .detail-actions .prototype-btn,
+      .view-toggle-group,
+      .view-toggle-btn {
+        width: 100%;
+      }
+
+      .view-toggle-group {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+
+    @keyframes boot-spinner-rotate {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes boot-spinner-dash {
+      0% {
+        stroke-dasharray: 16 90;
+        stroke-dashoffset: 0;
+      }
+
+      50% {
+        stroke-dasharray: 52 90;
+        stroke-dashoffset: -18;
+      }
+
+      100% {
+        stroke-dasharray: 16 90;
+        stroke-dashoffset: -72;
+      }
+    }
+
+    @keyframes boot-progress-slide {
+      0% {
+        transform: translateX(-120%);
+      }
+
+      100% {
+        transform: translateX(320%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-app">
+    <section id="prototypeShell" class="prototype-shell">
+      <div id="bootStage" class="prototype-stage prototype-boot">
+        <div class="prototype-boot-card">
+          <div class="boot-mark">
+            <img src="assets/images/logo-main.webp" alt="MKP logo">
+          </div>
+          <p id="bootCaption" class="boot-caption">Classic V2 Preview</p>
+          <h1 id="bootTitle" class="boot-title">正在准备后处理窗口</h1>
+          <p id="bootCopy" class="boot-copy">先稳定显示同一个窗口，再接入实时进度。这个阶段即使没有处理数据，也会保持连续的加载反馈。</p>
+          <svg class="boot-spinner" viewBox="0 0 48 48" aria-hidden="true">
+            <circle class="boot-spinner-track" cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="4"></circle>
+            <circle class="boot-spinner-arc" cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="4"></circle>
+          </svg>
+          <div class="boot-progress" aria-label="后处理启动进度">
+            <div class="boot-progress-label">
+              <span id="bootPhase">正在准备实时进度界面</span>
+              <span id="bootPercent">启动中</span>
+            </div>
+            <div class="boot-progress-track" aria-hidden="true">
+              <div class="boot-progress-fill"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="runtimeStage" class="prototype-stage prototype-runtime">
+      <div id="runtimeContent" class="prototype-runtime-content">
+      <div class="prototype-main">
+        <header class="prototype-header">
+          <div class="prototype-brand">
+            <div class="prototype-logo">
+              <img src="assets/images/logo-main.webp" alt="MKP logo">
+            </div>
+            <div style="min-width:0;">
+              <small class="prototype-overline">Classic V2 Preview</small>
+              <h1 id="reportWindowTitle" class="prototype-window-title">MKP 后处理中</h1>
+            </div>
+          </div>
+          <div id="statusBadge" class="status-badge status-running">运行中</div>
+        </header>
+
+        <p id="progressLabel" class="prototype-kicker">CLI 后处理执行中</p>
+        <h2 id="summaryTitle" class="prototype-title">正在准备执行环境</h2>
+        <p id="summaryText" class="prototype-summary">这个实验版只保留一个更像工具程序的首屏，详细信息统一放到展开区。</p>
+        <div id="countdownText" class="feedback">处理中...</div>
+
+        <div class="prototype-actions">
+          <button id="viewToggleButton" class="prototype-btn prototype-btn-primary" type="button">查看详细</button>
+          <button id="closeButton" class="prototype-btn" type="button">关闭</button>
+        </div>
+        <div id="progressPanel" class="prototype-progress is-running">
+          <div class="progress-row">
+            <div class="progress-track" aria-hidden="true">
+              <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <div id="progressPercent" class="progress-percent">0%</div>
+          </div>
+          <div id="progressStepText" class="progress-step">当前步骤：等待后处理开始</div>
+        </div>
+
+        <div class="prototype-meta">
+          <div class="prototype-metric">
+            <span>输出文件</span>
+            <strong id="metricOutput">待生成</strong>
+          </div>
+          <div class="prototype-metric">
+            <span>耗时</span>
+            <strong id="metricDuration">--</strong>
+          </div>
+        </div>
+
+      </div>
+
+      <section id="detailPanel" class="prototype-detail">
+        <div class="detail-toolbar">
+          <div class="view-toggle-group">
+            <button id="humanViewButton" class="view-toggle-btn is-active" type="button">普通步骤</button>
+            <button id="technicalViewButton" class="view-toggle-btn" type="button">代码步骤</button>
+          </div>
+          <div class="detail-actions">
+            <button id="exportTraceButton" class="prototype-btn" type="button">导出步骤</button>
+            <button id="exportGcodeButton" class="prototype-btn" type="button">导出 G-code</button>
+          </div>
+        </div>
+
+        <div class="detail-metadata">
+          <div class="detail-card">
+            <strong>输入 / 输出</strong>
+            <code id="pathSummary">等待后处理状态...</code>
+          </div>
+          <div class="detail-card">
+            <strong>解析统计</strong>
+            <code id="summaryCode">等待后处理状态...</code>
+          </div>
+        </div>
+
+        <div id="stepsContainer" class="steps-container"></div>
+      </section>
+      </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="assets/js/postprocess-report-v2.js"></script>
+</body>
+</html>

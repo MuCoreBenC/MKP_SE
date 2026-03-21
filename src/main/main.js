@@ -1,13 +1,15 @@
-const { autoUpdater } = require('electron-updater');
-const { app, BrowserWindow, Notification, ipcMain, nativeTheme, shell, dialog } = require('electron'); // 必须全部引入
+const electron = require('electron');
+const { BrowserWindow, Notification, ipcMain, nativeTheme, shell, dialog } = electron; // 必须全部引入
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 const {
+  buildSupportBundle,
   buildCrashLogMessage,
   buildGuiRelaunchArgs,
-  buildLogFilePath,
+  buildScopedLogFilePath,
   buildPrefixedLogLines,
+  collectScopedLogExcerpt,
   buildUpdaterFailureLogMessage
 } = require('./main_process_diagnostics');
 const {
@@ -48,12 +50,76 @@ const {
 } = require('./preset_conversion');
 const http = require('http');
 const https = require('https');
+
+function getElectronApp() {
+  return electron.app || null;
+}
+
+function waitForElectronApp(timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+
+    function resolveWhenReady() {
+      const currentApp = getElectronApp();
+      if (currentApp) {
+        resolve(currentApp);
+        return;
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        reject(new Error('Electron app unavailable during bootstrap'));
+        return;
+      }
+
+      setTimeout(resolveWhenReady, 10);
+    }
+
+    resolveWhenReady();
+  });
+}
+
+const app = new Proxy({}, {
+  get(target, prop) {
+    if (prop === 'whenReady') {
+      return () => waitForElectronApp().then((resolvedApp) => resolvedApp.whenReady());
+    }
+
+    if (prop === 'on' || prop === 'once') {
+      return (eventName, listener) =>
+        waitForElectronApp().then((resolvedApp) => resolvedApp[prop](eventName, listener));
+    }
+
+    if (prop === 'commandLine') {
+      return {
+        appendSwitch: (...args) => {
+          const resolvedApp = getElectronApp();
+          if (!resolvedApp?.commandLine?.appendSwitch) {
+            return false;
+          }
+
+          resolvedApp.commandLine.appendSwitch(...args);
+          return true;
+        }
+      };
+    }
+
+    const resolvedApp = getElectronApp();
+    const value = resolvedApp?.[prop];
+    return typeof value === 'function' ? value.bind(resolvedApp) : value;
+  }
+});
+
 const isCliMode = process.argv.includes('--Gcode');
 const isPostprocessReportMode = process.argv.includes('--postprocess-report');
 const isReleaseCenterMode = process.argv.includes('--release-center');
 const AdmZip = require('adm-zip');
 const LOG_RETENTION_MS = 7 * 24 * 3600 * 1000;
+const DIAGNOSTIC_EXPORT_MAX_LOG_LINES = 240;
+const DIAGNOSTIC_EXPORT_MAX_ISSUE_LOG_LINES = 1200;
+const SUPPORT_BUNDLE_REUSE_WINDOW_MS = 60 * 1000;
 let hasCleanedExpiredLogs = false;
+let supportBundleExportPromise = null;
+let lastSupportBundleExportResult = null;
 let getGodModeLayoutsDirectory = () => null;
 let getGodModeFormalLayoutDefaultsFilePath = () => null;
 let readGodModeLayoutState = () => {
@@ -68,8 +134,14 @@ let saveGodModeLayoutSnapshot = () => {
 let writeGodModeFormalLayoutDefaults = () => {
   throw new Error('God Mode layout storage is unavailable in packaged builds');
 };
+let hasLoadedGodModeLayoutStore = false;
 
-if (!app.isPackaged) {
+function ensureGodModeLayoutStoreLoaded() {
+  if (hasLoadedGodModeLayoutStore || app.isPackaged) {
+    return;
+  }
+
+  hasLoadedGodModeLayoutStore = true;
   ({
     getGodModeLayoutsDirectory,
     getGodModeFormalLayoutDefaultsFilePath,
@@ -84,6 +156,49 @@ const mainProcessDiagnosticsState = {
   lastPage: 'startup',
   lastRendererLog: null
 };
+let cachedAutoUpdater = null;
+let hasResolvedAutoUpdater = false;
+
+function isUpdaterSupportedRuntime() {
+  return resolveMainProcessMode() === 'gui' && app.isPackaged && process.defaultApp !== true;
+}
+
+function getAutoUpdater() {
+  if (hasResolvedAutoUpdater) {
+    return cachedAutoUpdater;
+  }
+
+  hasResolvedAutoUpdater = true;
+
+  try {
+    ({ autoUpdater: cachedAutoUpdater } = require('electron-updater'));
+  } catch (error) {
+    appendMainProcessLog(`[WARN] [Updater] electron-updater unavailable: ${error.message}`);
+    cachedAutoUpdater = null;
+  }
+
+  return cachedAutoUpdater;
+}
+
+async function checkForUpdatesInBackground() {
+  if (!isUpdaterSupportedRuntime()) {
+    appendMainProcessLog(
+      `[INFO] [Updater] Skip auto-check in runtime=${resolveMainProcessMode()} packaged=${app.isPackaged} defaultApp=${process.defaultApp === true}`
+    );
+    return;
+  }
+
+  const updater = getAutoUpdater();
+  if (!updater) {
+    return;
+  }
+
+  try {
+    await updater.checkForUpdatesAndNotify();
+  } catch (error) {
+    appendMainProcessLog(buildUpdaterFailureLogMessage(error));
+  }
+}
 
 function getSafeAppVersion() {
   try {
@@ -138,6 +253,18 @@ function cleanupExpiredLogs(logDir) {
   });
 }
 
+function resolveDiagnosticsLogScope(options = {}) {
+  if (options.scope === 'cli') {
+    return 'cli';
+  }
+
+  if (options.scope === 'gui') {
+    return 'gui';
+  }
+
+  return resolveMainProcessMode() === 'cli' ? 'cli' : 'gui';
+}
+
 function appendMainProcessLog(message, options = {}) {
   try {
     const userDataPath = options.userDataPath || app.getPath('userData');
@@ -149,7 +276,7 @@ function appendMainProcessLog(message, options = {}) {
     cleanupExpiredLogs(logDir);
 
     const now = options.date instanceof Date ? options.date : new Date();
-    const logFile = buildLogFilePath(userDataPath, now);
+    const logFile = buildScopedLogFilePath(userDataPath, resolveDiagnosticsLogScope(options), now);
     fs.appendFileSync(logFile, buildPrefixedLogLines(message, now), 'utf8');
     return logFile;
   } catch (error) {
@@ -250,7 +377,12 @@ function getProjectRootPath() {
 }
 
 function isDeveloperLayoutModeAvailable() {
-  return !app.isPackaged;
+  const available = !app.isPackaged;
+  if (available) {
+    ensureGodModeLayoutStoreLoaded();
+  }
+
+  return available;
 }
 
 function getResourcesRootPath() {
@@ -573,7 +705,18 @@ ipcMain.handle('duplicate-preset', (event, payload) => {
 
     // 2. 拼接纯英文、固定长度的文件名 (杜绝无限叠加！)
     // 不管源文件叫什么，新文件永远是: a1_quick_v3.0.0-r1_260313122011.json
-    const newFileName = `${printerId}_${versionType}_v${realVersion}_${ts}.json`;
+    const normalizedPrinterId = String(printerId || '').trim();
+    let resolvedVersionType = typeof versionType === 'string' ? versionType.trim() : '';
+    if (!resolvedVersionType || resolvedVersionType.toLowerCase() === 'null' || resolvedVersionType.toLowerCase() === 'undefined') {
+      const escapedPrinterId = normalizedPrinterId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const versionTypeMatch = String(fileName || '').match(new RegExp(`^${escapedPrinterId}_([^_]+)_v`, 'i'));
+      resolvedVersionType = versionTypeMatch?.[1] || '';
+    }
+    if (!resolvedVersionType) {
+      resolvedVersionType = 'standard';
+    }
+
+    const newFileName = `${normalizedPrinterId}_${resolvedVersionType}_v${realVersion}_${ts}.json`;
     const destPath = path.join(dir, newFileName);
 
     // 3. 读取源文件，注入中文显示名 `_custom_name`
@@ -965,11 +1108,155 @@ ipcMain.on('write-log', (event, message) => {
   }
 });
 
+function getReusableSupportBundleExportResult(nowMs = Date.now()) {
+  if (!lastSupportBundleExportResult || !lastSupportBundleExportResult.success) {
+    return null;
+  }
+
+  const exportedAtMs = Number(lastSupportBundleExportResult.exportedAtMs || 0);
+  if (!exportedAtMs || nowMs - exportedAtMs > SUPPORT_BUNDLE_REUSE_WINDOW_MS) {
+    lastSupportBundleExportResult = null;
+    return null;
+  }
+
+  if (!lastSupportBundleExportResult.readmePath || !fs.existsSync(lastSupportBundleExportResult.readmePath)) {
+    lastSupportBundleExportResult = null;
+    return null;
+  }
+
+  const { exportedAtMs: ignoredExportedAtMs, ...cachedResult } = lastSupportBundleExportResult;
+  return {
+    ...cachedResult,
+    reused: true
+  };
+}
+
+function rememberSupportBundleExportResult(result, nowMs = Date.now()) {
+  if (!result || result.success !== true) {
+    return result;
+  }
+
+  lastSupportBundleExportResult = {
+    ...result,
+    exportedAtMs: nowMs
+  };
+  return result;
+}
+
+ipcMain.handle('open-last-support-bundle-folder', async () => {
+  if (!lastSupportBundleExportResult?.success || !lastSupportBundleExportResult.readmePath) {
+    return {
+      success: false,
+      error: '最近没有可打开的诊断包。'
+    };
+  }
+
+  if (!fs.existsSync(lastSupportBundleExportResult.readmePath)) {
+    lastSupportBundleExportResult = null;
+    return {
+      success: false,
+      error: '最近的诊断包文件夹已经不存在。'
+    };
+  }
+
+  shell.showItemInFolder(lastSupportBundleExportResult.readmePath);
+  return {
+    success: true,
+    exportDir: lastSupportBundleExportResult.exportDir || null,
+    readmePath: lastSupportBundleExportResult.readmePath
+  };
+});
+
 // ==========================================
 // 生成极简诊断报告 (导出至桌面)
 // ==========================================
-ipcMain.on('export-bug-report', () => {
+function exportSupportBundleToDesktop() {
+  const reusableSupportBundleExportResult = getReusableSupportBundleExportResult();
+  if (reusableSupportBundleExportResult) {
+    return reusableSupportBundleExportResult;
+  }
+
+  const now = new Date();
+  const desktopPath = app.getPath('desktop');
+  const userDataPath = app.getPath('userData');
+  const exportRootDir = path.join(desktopPath, 'mkpse_log');
+  const guiExcerpt = collectScopedLogExcerpt({
+    userDataPath,
+    scope: 'gui',
+    date: now,
+    maxLines: DIAGNOSTIC_EXPORT_MAX_LOG_LINES
+  });
+  const cliExcerpt = collectScopedLogExcerpt({
+    userDataPath,
+    scope: 'cli',
+    date: now,
+    maxLines: DIAGNOSTIC_EXPORT_MAX_LOG_LINES,
+    maxIssueLines: DIAGNOSTIC_EXPORT_MAX_ISSUE_LOG_LINES,
+    latestSessionOnly: true
+  });
+  const bundle = buildSupportBundle({
+    appVersion: getSafeAppVersion(),
+    runtime: getMainProcessRuntimeInfo(),
+    lastPage: mainProcessDiagnosticsState.lastPage,
+    lastRendererLog: mainProcessDiagnosticsState.lastRendererLog,
+    guiLogExcerpt: guiExcerpt.content,
+    cliLogExcerpt: cliExcerpt.content,
+    guiLogMeta: guiExcerpt,
+    cliLogMeta: cliExcerpt
+  }, {
+    date: now
+  });
+  const exportDir = path.join(exportRootDir, bundle.folderName);
+
+  fs.mkdirSync(exportDir, { recursive: true });
+  bundle.files.forEach((file) => {
+    fs.writeFileSync(path.join(exportDir, file.name), file.content, 'utf8');
+  });
+
+  const readmePath = path.join(exportDir, 'README_MKPSE_求助.txt');
+  appendMainProcessLog(
+    `[INFO] [MainProcess] support bundle exported fingerprint=${bundle.fingerprint} exportDir=${exportDir}`,
+    { scope: 'gui' }
+  );
+  shell.showItemInFolder(readmePath);
+
+  return rememberSupportBundleExportResult({
+    success: true,
+    fingerprint: bundle.fingerprint,
+    summary: bundle.summary,
+    exportDir,
+    readmePath,
+    reused: false
+  }, now.getTime());
+}
+
+ipcMain.handle('export-bug-report', async () => {
+  if (supportBundleExportPromise) {
+    return supportBundleExportPromise;
+  }
+
+  supportBundleExportPromise = (async () => {
+    try {
+      return exportSupportBundleToDesktop();
+    } catch (error) {
+      appendMainProcessLog(
+        `[ERROR] [MainProcess] support bundle export failed message=${JSON.stringify(error.message || String(error))}`,
+        { scope: 'gui' }
+      );
+      return {
+        success: false,
+        error: error.message || String(error)
+      };
+    }
+  })();
+
   try {
+    return await supportBundleExportPromise;
+  } finally {
+    supportBundleExportPromise = null;
+  }
+});
+/*
     const desktopPath = app.getPath('desktop');
     const now = new Date();
     
@@ -1004,13 +1291,14 @@ ipcMain.on('export-bug-report', () => {
 `;
     fs.writeFileSync(exportPath, header + logContent);
     require('electron').shell.showItemInFolder(exportPath);
-  } catch(e) {
+  } catch (error) {
     console.error('导出报告失败', e);
   }
 });
 
 
 // 版本号对比工具
+*/
 function compareVersions(v1, v2) {
   const a = (v1 || '0.0.0').replace(/^v/, '').split('.').map(Number);
   const b = (v2 || '0.0.0').replace(/^v/, '').split('.').map(Number);
@@ -1082,13 +1370,756 @@ ipcMain.handle('init-default-presets', async () => {
 
 let postprocessReportWindow = null;
 let postprocessReportStatePath = null;
+const POSTPROCESS_REPORT_MINIMUM_PROGRESS_DURATION_MS = 1000;
+const POSTPROCESS_REPORT_AUTO_CLOSE_SECONDS = 10;
+const POSTPROCESS_REPORT_BOOTSTRAP_DELAY_MS = 560;
+const POSTPROCESS_REPORT_BOOTSTRAP_SWAP_DELAY_MS = 320;
+const POSTPROCESS_REPORT_BOOTSTRAP_TARGET_PERCENT = 12;
+const POSTPROCESS_REPORT_UI_VARIANT_LEGACY = 'legacy';
+const POSTPROCESS_REPORT_UI_VARIANT_CLASSIC_V2 = 'classic-v2';
+const DEFAULT_APP_WINDOW_WIDTH = 934;
+const DEFAULT_APP_WINDOW_HEIGHT = 646;
+
+function waitForMilliseconds(durationMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, Number(durationMs) || 0));
+  });
+}
+
+function getOptionalCliFlagValue(argv = [], flag) {
+  const directValue = getArgValue(argv, flag);
+  if (directValue) {
+    return directValue;
+  }
+
+  const prefix = `${flag}=`;
+  const matchedArg = (argv || []).find((item) => String(item || '').startsWith(prefix));
+  return matchedArg ? matchedArg.slice(prefix.length) : null;
+}
+
+function normalizePostprocessReportUiVariant(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    normalized === POSTPROCESS_REPORT_UI_VARIANT_CLASSIC_V2
+    || normalized === 'classic_v2'
+    || normalized === 'v2'
+  ) {
+    return POSTPROCESS_REPORT_UI_VARIANT_CLASSIC_V2;
+  }
+
+  return POSTPROCESS_REPORT_UI_VARIANT_LEGACY;
+}
+
+function resolvePostprocessReportUiVariant(argv = process.argv, env = process.env) {
+  const cliValue = getOptionalCliFlagValue(argv, '--postprocess-report-ui');
+  if (cliValue) {
+    return normalizePostprocessReportUiVariant(cliValue);
+  }
+
+  const envValue = env?.MKP_POSTPROCESS_REPORT_UI;
+  if (envValue != null && String(envValue).trim()) {
+    return normalizePostprocessReportUiVariant(envValue);
+  }
+
+  return POSTPROCESS_REPORT_UI_VARIANT_CLASSIC_V2;
+}
+
+function getPostprocessReportWindowMetrics(variant = POSTPROCESS_REPORT_UI_VARIANT_LEGACY) {
+  if (normalizePostprocessReportUiVariant(variant) === POSTPROCESS_REPORT_UI_VARIANT_CLASSIC_V2) {
+    return {
+      collapsedWidth: DEFAULT_APP_WINDOW_WIDTH,
+      collapsedHeight: DEFAULT_APP_WINDOW_HEIGHT,
+      expandedWidth: DEFAULT_APP_WINDOW_WIDTH,
+      expandedHeight: DEFAULT_APP_WINDOW_HEIGHT,
+      minWidth: DEFAULT_APP_WINDOW_WIDTH,
+      minHeight: DEFAULT_APP_WINDOW_HEIGHT,
+      backgroundColor: '#f5f7fb'
+    };
+  }
+
+  return {
+    collapsedWidth: 720,
+    collapsedHeight: 320,
+    expandedWidth: 1160,
+    expandedHeight: 860,
+    minWidth: 520,
+    minHeight: 280,
+    backgroundColor: '#f3f6fb'
+  };
+}
+
+function resolvePostprocessReportRendererPath(variant = POSTPROCESS_REPORT_UI_VARIANT_LEGACY) {
+  return path.join(
+    __dirname,
+    normalizePostprocessReportUiVariant(variant) === POSTPROCESS_REPORT_UI_VARIANT_CLASSIC_V2
+      ? '../renderer/postprocess_report_v2.html'
+      : '../renderer/postprocess_report_legacy.html'
+  );
+}
+
+const postprocessReportUiVariant = resolvePostprocessReportUiVariant();
+
+function buildPostprocessReportBootstrapDataUrlLegacy() {
+  const bootstrapHtml = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MKP 后处理中</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bootstrap-bg: #f3f6fb;
+      --bootstrap-panel: rgba(255, 255, 255, 0.94);
+      --bootstrap-text: #111827;
+      --bootstrap-muted: #6b7280;
+      --bootstrap-accent: #3b82f6;
+      --bootstrap-border: rgba(148, 163, 184, 0.18);
+      --bootstrap-track: rgba(59, 130, 246, 0.14);
+      --bootstrap-shadow: 0 22px 48px rgba(15, 23, 42, 0.10);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.10), rgba(59, 130, 246, 0) 38%),
+        linear-gradient(180deg, #f7f9fc 0%, var(--bootstrap-bg) 100%);
+      color: var(--bootstrap-text);
+      overflow: hidden;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+
+    .bootstrap-shell {
+      width: min(100%, 720px);
+      border-radius: 24px;
+      border: 1px solid var(--bootstrap-border);
+      background: var(--bootstrap-panel);
+      box-shadow: var(--bootstrap-shadow);
+      padding: 24px 26px;
+    }
+
+    .bootstrap-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .bootstrap-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.18);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--bootstrap-accent);
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      flex-shrink: 0;
+    }
+
+    .bootstrap-title {
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    .bootstrap-copy {
+      margin: 4px 0 0;
+      color: var(--bootstrap-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .bootstrap-progress-meta {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .bootstrap-percent {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--bootstrap-accent);
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bootstrap-phase {
+      color: var(--bootstrap-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .bootstrap-progress-track {
+      position: relative;
+      height: 12px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--bootstrap-track);
+      border: 1px solid rgba(59, 130, 246, 0.12);
+    }
+
+    .bootstrap-progress-fill {
+      position: relative;
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(59, 130, 246, 0.76), #3b82f6 70%, rgba(255, 255, 255, 0.95) 100%);
+      box-shadow: 0 8px 20px rgba(59, 130, 246, 0.24);
+      transition: width 0.12s linear;
+    }
+
+    .bootstrap-progress-fill::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.34) 50%, rgba(255, 255, 255, 0) 100%);
+      transform: translateX(-100%);
+      animation: bootstrap-slide 1.15s linear infinite;
+    }
+
+    .bootstrap-stages {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .bootstrap-stage {
+      --stage-progress: 0%;
+      position: relative;
+      min-width: 132px;
+      flex: 1 1 0;
+      padding: 10px 12px 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.94) 100%);
+      color: var(--bootstrap-muted);
+      overflow: hidden;
+      transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        box-shadow 0.18s ease,
+        color 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .bootstrap-stage::before,
+    .bootstrap-stage::after {
+      content: "";
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 8px;
+      height: 4px;
+      border-radius: 999px;
+    }
+
+    .bootstrap-stage::before {
+      background: rgba(59, 130, 246, 0.10);
+    }
+
+    .bootstrap-stage::after {
+      right: auto;
+      width: var(--stage-progress);
+      background: linear-gradient(90deg, rgba(59, 130, 246, 0.78) 0%, #3b82f6 100%);
+      box-shadow: 0 4px 10px rgba(59, 130, 246, 0.20);
+      transition: width 0.12s linear;
+    }
+
+    .bootstrap-stage-title {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.4;
+      color: inherit;
+    }
+
+    .bootstrap-stage-range {
+      display: block;
+      margin-top: 4px;
+      font-size: 11px;
+      line-height: 1.4;
+      opacity: 0.78;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bootstrap-stage.is-active,
+    .bootstrap-stage.is-complete {
+      color: var(--bootstrap-text);
+    }
+
+    .bootstrap-stage.is-active {
+      border-color: rgba(59, 130, 246, 0.26);
+      background: linear-gradient(180deg, rgba(59, 130, 246, 0.10) 0%, rgba(59, 130, 246, 0.05) 100%);
+      box-shadow: 0 12px 28px rgba(59, 130, 246, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .bootstrap-stage.is-complete {
+      border-color: rgba(59, 130, 246, 0.18);
+      background: linear-gradient(180deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.04) 100%);
+    }
+
+    .bootstrap-status {
+      margin-top: 12px;
+      color: var(--bootstrap-muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    @keyframes bootstrap-slide {
+      0% {
+        transform: translateX(-105%);
+      }
+
+      100% {
+        transform: translateX(285%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="bootstrap-shell" aria-label="后处理启动中">
+    <div class="bootstrap-head">
+      <div class="bootstrap-mark">MKP</div>
+      <div>
+        <h1 class="bootstrap-title">正在启动后处理窗口</h1>
+        <p class="bootstrap-copy">启动阶段会先计入总进度，随后继续显示实时处理进度。</p>
+      </div>
+    </div>
+    <div class="bootstrap-progress-meta">
+      <div id="bootstrapPercent" class="bootstrap-percent">0%</div>
+      <div id="bootstrapPhase" class="bootstrap-phase">正在显示执行窗口</div>
+    </div>
+    <div class="bootstrap-progress-track" aria-hidden="true">
+      <div id="bootstrapFill" class="bootstrap-progress-fill"></div>
+    </div>
+    <div id="bootstrapStages" class="bootstrap-stages" aria-label="后处理启动阶段">
+      <div class="bootstrap-stage is-active" data-stage-start="0" data-stage-end="4">
+        <span class="bootstrap-stage-title">显示窗口</span>
+        <small class="bootstrap-stage-range">0-4%</small>
+      </div>
+      <div class="bootstrap-stage" data-stage-start="4" data-stage-end="8">
+        <span class="bootstrap-stage-title">加载报告</span>
+        <small class="bootstrap-stage-range">4-8%</small>
+      </div>
+      <div class="bootstrap-stage" data-stage-start="8" data-stage-end="${POSTPROCESS_REPORT_BOOTSTRAP_TARGET_PERCENT}">
+        <span class="bootstrap-stage-title">同步状态</span>
+        <small class="bootstrap-stage-range">8-${POSTPROCESS_REPORT_BOOTSTRAP_TARGET_PERCENT}%</small>
+      </div>
+    </div>
+    <div id="bootstrapStatus" class="bootstrap-status">正在准备报告界面与初始状态同步...</div>
+  </section>
+  <script>
+    (function() {
+      const targetPercent = ${POSTPROCESS_REPORT_BOOTSTRAP_TARGET_PERCENT};
+      const durationMs = ${Math.max(360, POSTPROCESS_REPORT_BOOTSTRAP_SWAP_DELAY_MS)};
+      const phases = [
+        { percent: 0, label: '正在显示执行窗口', status: '优先把窗口显示出来，后台处理随后开始。' },
+        { percent: 4, label: '正在加载报告界面', status: '正在准备实时报告所需的页面资源。' },
+        { percent: 8, label: '正在同步初始状态', status: '即将切换到正式报告页并接入真实进度。' },
+        { percent: targetPercent, label: '即将进入实时报告', status: '启动阶段完成，后续百分比会继续累计到 100%。' }
+      ];
+      const percentElement = document.getElementById('bootstrapPercent');
+      const phaseElement = document.getElementById('bootstrapPhase');
+      const statusElement = document.getElementById('bootstrapStatus');
+      const fillElement = document.getElementById('bootstrapFill');
+      const stageElements = Array.from(document.querySelectorAll('.bootstrap-stage'));
+      let startTime = 0;
+
+      function resolvePhase(percent) {
+        let currentPhase = phases[0];
+        for (const phase of phases) {
+          if (percent >= phase.percent) {
+            currentPhase = phase;
+          }
+        }
+        return currentPhase;
+      }
+
+      function render(percent) {
+        const safePercent = Math.max(0, Math.min(targetPercent, percent));
+        const currentPhase = resolvePhase(safePercent);
+        percentElement.textContent = Math.round(safePercent) + '%';
+        phaseElement.textContent = currentPhase.label;
+        statusElement.textContent = currentPhase.status;
+        fillElement.style.width = safePercent + '%';
+        stageElements.forEach((stage, index) => {
+          const stageStart = Number(stage.dataset.stageStart || 0);
+          const stageEnd = Number(stage.dataset.stageEnd || targetPercent);
+          const stageSpan = Math.max(1, stageEnd - stageStart);
+          const stageProgress = safePercent <= stageStart
+            ? 0
+            : safePercent >= stageEnd
+              ? 100
+              : ((safePercent - stageStart) / stageSpan) * 100;
+          const isLastStage = index === stageElements.length - 1;
+          const isComplete = safePercent >= stageEnd && !isLastStage;
+          const isActive = !isComplete && safePercent >= stageStart;
+
+          stage.style.setProperty('--stage-progress', Math.max(0, Math.min(100, stageProgress)).toFixed(2) + '%');
+          stage.classList.toggle('is-complete', isComplete);
+          stage.classList.toggle('is-active', isActive);
+        });
+      }
+
+      function tick(timestamp) {
+        if (!startTime) {
+          startTime = timestamp;
+        }
+
+        const elapsed = timestamp - startTime;
+        const percent = Math.min(targetPercent, (elapsed / durationMs) * targetPercent);
+        render(percent);
+
+        if (percent < targetPercent) {
+          window.requestAnimationFrame(tick);
+        }
+      }
+
+      render(0);
+      window.requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>`;
+
+  return `data:text/html;charset=UTF-8,${encodeURIComponent(bootstrapHtml)}`;
+}
+
+function buildPostprocessReportBootstrapDataUrlClassicV2() {
+  const bootstrapHtml = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MKP 后处理中</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --surface: #ffffff;
+      --surface-muted: #f5f7fb;
+      --surface-line: rgba(148, 163, 184, 0.18);
+      --text: #0f172a;
+      --muted: #667085;
+      --accent: #2563eb;
+      --track: rgba(37, 99, 235, 0.12);
+      --shadow: 0 18px 42px rgba(15, 23, 42, 0.10);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      background:
+        linear-gradient(180deg, rgba(37, 99, 235, 0.05) 0%, rgba(37, 99, 235, 0.015) 148px, rgba(37, 99, 235, 0) 100%),
+        var(--surface-muted);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+
+    .shell {
+      width: min(100%, 660px);
+      border-radius: 20px;
+      border: 1px solid var(--surface-line);
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: var(--shadow);
+      padding: 18px 20px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(37, 99, 235, 0.10);
+      border: 1px solid rgba(37, 99, 235, 0.14);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .eyebrow {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+
+    .status {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(37, 99, 235, 0.10);
+      border: 1px solid rgba(37, 99, 235, 0.16);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .label {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .headline {
+      margin: 6px 0 0;
+      font-size: 24px;
+      line-height: 1.16;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .copy {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .progress-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    .track {
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--track);
+      border: 1px solid rgba(37, 99, 235, 0.10);
+    }
+
+    .fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(37, 99, 235, 0.76) 0%, #2563eb 100%);
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.18);
+      transition: width 0.12s linear;
+    }
+
+    .percent {
+      min-width: 54px;
+      text-align: right;
+      font-size: 18px;
+      line-height: 1;
+      font-weight: 800;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .footer {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <section class="shell" aria-label="后处理启动中">
+    <div class="topbar">
+      <div class="brand">
+        <div class="mark">MKP</div>
+        <div>
+          <small class="eyebrow">Classic V2 Preview</small>
+          <h1 class="title">CLI 后处理进度窗</h1>
+        </div>
+      </div>
+      <div class="status">运行中</div>
+    </div>
+    <p id="bootstrapPhase" class="label">正在启动后处理窗口</p>
+    <h2 class="headline">先让窗口稳定显示出来</h2>
+    <p id="bootstrapStatus" class="copy">这个实验版会先显示一个更像工具程序的进度壳，再接入真实处理进度。</p>
+    <div class="progress-row">
+      <div class="track" aria-hidden="true">
+        <div id="bootstrapFill" class="fill"></div>
+      </div>
+      <div id="bootstrapPercent" class="percent">0%</div>
+    </div>
+    <div class="footer">
+      <span>Classic V2 只做首屏原型，旧版 legacy 仍然保留可随时切回。</span>
+      <span>0-${POSTPROCESS_REPORT_BOOTSTRAP_TARGET_PERCENT}%</span>
+    </div>
+  </section>
+  <script>
+    (function() {
+      const targetPercent = ${POSTPROCESS_REPORT_BOOTSTRAP_TARGET_PERCENT};
+      const durationMs = ${Math.max(420, POSTPROCESS_REPORT_BOOTSTRAP_SWAP_DELAY_MS + 100)};
+      const phases = [
+        { percent: 0, label: '正在启动后处理窗口', status: '优先显示窗口壳体，避免切片开始后毫无反馈。' },
+        { percent: 5, label: '正在准备实时状态', status: '下一步会切换到实验版首屏，并接入真实进度。' },
+        { percent: targetPercent, label: '即将进入处理进度', status: '启动阶段完成，后续百分比会继续累计到 100%。' }
+      ];
+      const percentElement = document.getElementById('bootstrapPercent');
+      const phaseElement = document.getElementById('bootstrapPhase');
+      const statusElement = document.getElementById('bootstrapStatus');
+      const fillElement = document.getElementById('bootstrapFill');
+      let startTime = 0;
+
+      function resolvePhase(percent) {
+        let currentPhase = phases[0];
+        for (const phase of phases) {
+          if (percent >= phase.percent) {
+            currentPhase = phase;
+          }
+        }
+        return currentPhase;
+      }
+
+      function render(percent) {
+        const safePercent = Math.max(0, Math.min(targetPercent, percent));
+        const currentPhase = resolvePhase(safePercent);
+        percentElement.textContent = Math.round(safePercent) + '%';
+        phaseElement.textContent = currentPhase.label;
+        statusElement.textContent = currentPhase.status;
+        fillElement.style.width = safePercent + '%';
+      }
+
+      function tick(timestamp) {
+        if (!startTime) {
+          startTime = timestamp;
+        }
+
+        const elapsed = timestamp - startTime;
+        const percent = Math.min(targetPercent, (elapsed / durationMs) * targetPercent);
+        render(percent);
+
+        if (percent < targetPercent) {
+          window.requestAnimationFrame(tick);
+        }
+      }
+
+      render(0);
+      window.requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>`;
+
+  return `data:text/html;charset=UTF-8,${encodeURIComponent(bootstrapHtml)}`;
+}
+
+function buildPostprocessReportBootstrapDataUrl(variant = postprocessReportUiVariant) {
+  return normalizePostprocessReportUiVariant(variant) === POSTPROCESS_REPORT_UI_VARIANT_CLASSIC_V2
+    ? buildPostprocessReportBootstrapDataUrlClassicV2()
+    : buildPostprocessReportBootstrapDataUrlLegacy();
+}
+
+function normalizePostprocessReportState(state = {}) {
+  const normalizedState = {
+    ...state,
+    ui: {
+      minimumProgressDurationMs: POSTPROCESS_REPORT_MINIMUM_PROGRESS_DURATION_MS,
+      autoCloseSeconds: state.status === 'failed'
+        ? 0
+        : POSTPROCESS_REPORT_AUTO_CLOSE_SECONDS,
+      ...(state.ui || {})
+    }
+  };
+
+  if (!normalizedState.progress) {
+    normalizedState.progress = {
+      percent: normalizedState.status === 'failed' || normalizedState.status === 'completed' ? 100 : 0,
+      phase: normalizedState.status || 'running',
+      label: normalizedState.status === 'failed' ? '后处理失败' : '后处理进行中',
+      detail: '',
+      currentStepTitle: '',
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  return normalizedState;
+}
+
+function persistPostprocessReportState(reportPath, state = {}) {
+  return writePostprocessReportState(reportPath, normalizePostprocessReportState(state));
+}
 
 function getCurrentPostprocessReportState() {
   try {
-    return readPostprocessReportState(postprocessReportStatePath);
+    const nextState = readPostprocessReportState(postprocessReportStatePath);
+    return nextState ? normalizePostprocessReportState(nextState) : null;
   } catch (error) {
-    return {
+    return normalizePostprocessReportState({
       status: 'failed',
+      progress: {
+        percent: 100,
+        phase: 'failed',
+        label: '读取后处理报告失败',
+        detail: '无法读取当前的后处理报告文件。',
+        currentStepTitle: '读取后处理报告失败',
+        updatedAt: new Date().toISOString()
+      },
       steps: [
         {
           kind: 'error',
@@ -1100,7 +2131,7 @@ function getCurrentPostprocessReportState() {
       ui: {
         autoCloseSeconds: 0
       }
-    };
+    });
   }
 }
 
@@ -1166,8 +2197,9 @@ function registerPostprocessReportHandlers() {
   ipcMain.handle('set-postprocess-report-expanded', async (event, expanded) => {
     const targetWindow = BrowserWindow.fromWebContents(event.sender) || postprocessReportWindow;
     if (targetWindow && !targetWindow.isDestroyed()) {
-      const width = expanded ? 1100 : 560;
-      const height = expanded ? 860 : 196;
+      const windowMetrics = getPostprocessReportWindowMetrics(postprocessReportUiVariant);
+      const width = expanded ? windowMetrics.expandedWidth : windowMetrics.collapsedWidth;
+      const height = expanded ? windowMetrics.expandedHeight : windowMetrics.collapsedHeight;
       targetWindow.setContentSize(width, height, true);
       targetWindow.center();
     }
@@ -1196,15 +2228,20 @@ function registerPostprocessReportHandlers() {
 }
 
 function createPostprocessReportWindow() {
+  const windowMetrics = getPostprocessReportWindowMetrics(postprocessReportUiVariant);
+  const isClassicV2 = postprocessReportUiVariant === POSTPROCESS_REPORT_UI_VARIANT_CLASSIC_V2;
+  let hasLoadedLiveReportPage = false;
   postprocessReportWindow = new BrowserWindow({
-    width: 560,
-    height: 196,
+    width: windowMetrics.collapsedWidth,
+    height: windowMetrics.collapsedHeight,
+    minWidth: windowMetrics.minWidth,
+    minHeight: windowMetrics.minHeight,
     useContentSize: true,
     resizable: true,
     minimizable: true,
     maximizable: false,
     autoHideMenuBar: true,
-    backgroundColor: '#0f1417',
+    backgroundColor: windowMetrics.backgroundColor,
     show: false,
     icon: path.join(__dirname, '../renderer/assets/icons/logo-main.ico'),
     title: 'MKP 后处理过程',
@@ -1214,10 +2251,55 @@ function createPostprocessReportWindow() {
     }
   });
 
-  postprocessReportWindow.once('ready-to-show', () => {
-    if (postprocessReportWindow && !postprocessReportWindow.isDestroyed()) {
+  const loadLivePostprocessReportPage = () => {
+    if (isClassicV2) {
+      return;
+    }
+
+    if (!postprocessReportWindow || postprocessReportWindow.isDestroyed() || hasLoadedLiveReportPage) {
+      return;
+    }
+
+    hasLoadedLiveReportPage = true;
+    setTimeout(() => {
+      if (postprocessReportWindow && !postprocessReportWindow.isDestroyed()) {
+        postprocessReportWindow.loadFile(resolvePostprocessReportRendererPath(postprocessReportUiVariant));
+      }
+    }, POSTPROCESS_REPORT_BOOTSTRAP_SWAP_DELAY_MS);
+  };
+
+  const revealPostprocessReportWindow = () => {
+    if (!postprocessReportWindow || postprocessReportWindow.isDestroyed()) {
+      return;
+    }
+
+    if (postprocessReportWindow.isMinimized()) {
+      postprocessReportWindow.restore();
+    }
+
+    if (!postprocessReportWindow.isVisible()) {
       postprocessReportWindow.show();
     }
+
+    postprocessReportWindow.moveTop();
+    postprocessReportWindow.focus();
+
+    if (process.platform === 'win32') {
+      postprocessReportWindow.setAlwaysOnTop(true, 'screen-saver');
+      setTimeout(() => {
+        if (postprocessReportWindow && !postprocessReportWindow.isDestroyed()) {
+          postprocessReportWindow.setAlwaysOnTop(false);
+        }
+      }, 1200);
+    }
+  };
+
+  postprocessReportWindow.once('ready-to-show', () => {
+    revealPostprocessReportWindow();
+  });
+  postprocessReportWindow.webContents.on('did-finish-load', () => {
+    revealPostprocessReportWindow();
+    loadLivePostprocessReportPage();
   });
 
   postprocessReportWindow.on('closed', () => {
@@ -1225,7 +2307,12 @@ function createPostprocessReportWindow() {
     app.quit();
   });
 
-  postprocessReportWindow.loadFile(path.join(__dirname, '../renderer/postprocess_report.html'));
+  if (isClassicV2) {
+    postprocessReportWindow.loadFile(resolvePostprocessReportRendererPath(postprocessReportUiVariant));
+    return;
+  }
+
+  postprocessReportWindow.loadURL(buildPostprocessReportBootstrapDataUrl(postprocessReportUiVariant));
 }
 
 if (isPostprocessReportMode) {
@@ -1243,7 +2330,7 @@ if (isPostprocessReportMode) {
   // ==========================================
   if (app.dock) app.dock.hide();
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     try {
       console.log("[O503] CLI process");
       const cliArgs = parseCliArguments(process.argv);
@@ -1272,20 +2359,27 @@ if (isPostprocessReportMode) {
         );
       }
 
-      writePostprocessReportState(reportPath, createPendingPostprocessReportState({
+      persistPostprocessReportState(reportPath, createPendingPostprocessReportState({
         configFormat: cliArgs.configFormat,
         configPath: cliArgs.configPath,
         inputPath: gcodePath,
         outputPath,
         runtime: runtimeInfo
       }));
-      launchDetachedPostprocessReportViewer(app, reportPath);
+      launchDetachedPostprocessReportViewer(app, reportPath, {
+        uiVariant: postprocessReportUiVariant
+      });
+      await waitForMilliseconds(POSTPROCESS_REPORT_BOOTSTRAP_DELAY_MS);
 
       const startTime = Date.now();
       const detailedResult = processGcodeDetailed(gcodePath, cliArgs.configPath, {
         configFormat: cliArgs.configFormat,
         outputPath,
-        runtimeInfo
+        runtimeInfo,
+        reportThrottleMs: 90,
+        onReportUpdate: (nextState) => {
+          persistPostprocessReportState(reportPath, nextState);
+        }
       });
       const processedGcode = detailedResult.outputGcode;
 
@@ -1297,13 +2391,21 @@ if (isPostprocessReportMode) {
           reportPath
         })}`
       );
-      writePostprocessReportState(reportPath, {
+      persistPostprocessReportState(reportPath, {
         ...detailedResult.report,
         outputPath,
         finishedAt: new Date().toISOString(),
         durationMs: Date.now() - startTime,
-        ui: {
-          autoCloseSeconds: 10
+        progress: {
+          ...(detailedResult.report.progress || {}),
+          percent: 100,
+          phase: 'completed',
+          label: '后处理完成',
+          detail: `已生成 ${path.basename(outputPath)}。`,
+          currentStepTitle: detailedResult.report.progress?.currentStepTitle
+            || detailedResult.report.steps?.[detailedResult.report.steps.length - 1]?.title
+            || '后处理完成',
+          updatedAt: new Date().toISOString()
         }
       });
       appendMainProcessLog(buildPostprocessStepLogLines(detailedResult.report).join('\n'));
@@ -1330,14 +2432,16 @@ if (isPostprocessReportMode) {
         const outputPath = resolvePostprocessOutputPath(gcodePath);
         const reportPath = createPostprocessReportFilePath(gcodePath);
         const runtimeInfo = getMainProcessRuntimeInfo({ mode: 'cli' });
-        writePostprocessReportState(reportPath, createFailedPostprocessReportState({
+        persistPostprocessReportState(reportPath, createFailedPostprocessReportState({
           configFormat: cliArgs.configFormat,
           configPath: cliArgs.configPath,
           inputPath: gcodePath,
           outputPath,
           runtime: runtimeInfo
         }, error));
-        launchDetachedPostprocessReportViewer(app, reportPath);
+        launchDetachedPostprocessReportViewer(app, reportPath, {
+          uiVariant: postprocessReportUiVariant
+        });
       } catch (reportError) {
         console.warn('[CLI] Failed to launch detached postprocess report viewer:', reportPath, reportError.message);
       }
@@ -1398,6 +2502,14 @@ if (isPostprocessReportMode) {
   // ==========================================
   ipcMain.handle('get-exe-path', () => {
     return app.getPath('exe'); 
+  });
+
+  ipcMain.handle('get-cli-launch-info', () => {
+    return {
+      exePath: app.getPath('exe'),
+      appPath: process.defaultApp === true ? safelyGetAppPath() : null,
+      defaultApp: process.defaultApp === true
+    };
   });
 
   // 监听前端的系统数据请求
@@ -1520,10 +2632,10 @@ ipcMain.handle('freeze-god-mode-layout-as-formal', async (event, payload = {}) =
 
   function createWindow() {
     const mainWindow = new BrowserWindow({
-      width: 934,
-      height: 646,      // 加上 30px 补偿
-      minWidth: 934,
-      minHeight: 646,   // 加上 30px 补偿
+      width: DEFAULT_APP_WINDOW_WIDTH,
+      height: DEFAULT_APP_WINDOW_HEIGHT,      // 加上 30px 补偿
+      minWidth: DEFAULT_APP_WINDOW_WIDTH,
+      minHeight: DEFAULT_APP_WINDOW_HEIGHT,   // 加上 30px 补偿
       useContentSize: false, // 彻底关掉内容计算，解决 580px 挤压 bug
       autoHideMenuBar: true, // 隐藏菜单栏
       backgroundColor: '#1A1D1F',
@@ -1554,9 +2666,7 @@ ipcMain.handle('freeze-god-mode-layout-as-formal', async (event, payload = {}) =
     });
 
     createWindow();
-    autoUpdater.checkForUpdatesAndNotify().catch((error) => {
-      appendMainProcessLog(buildUpdaterFailureLogMessage(error));
-    });
+    checkForUpdatesInBackground();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
@@ -1883,11 +2993,14 @@ ipcMain.handle('list-local-presets-detailed', (event, query = {}) => {
     const printerId = query.printerId || '';
     const versionType = query.versionType || '';
     const prefix = printerId && versionType ? `${printerId}_${versionType}_` : '';
+    const malformedPrefixes = printerId
+      ? [`${printerId}_null_`, `${printerId}_undefined_`]
+      : [];
 
     const files = fs.readdirSync(userDataPath)
       .filter((file) => file.toLowerCase().endsWith('.json'))
       .filter((file) => file !== 'presets_manifest.json')
-      .filter((file) => !prefix || file.startsWith(prefix));
+      .filter((file) => !prefix || file.startsWith(prefix) || malformedPrefixes.some((badPrefix) => file.startsWith(badPrefix)));
 
     const data = files.map((fileName) => {
       const absolutePath = path.join(userDataPath, fileName);
@@ -1903,6 +3016,7 @@ ipcMain.handle('list-local-presets-detailed', (event, query = {}) => {
       return {
         fileName,
         realVersion: extractPresetVersion(fileName, jsonData),
+        presetType: jsonData && typeof jsonData.type === 'string' ? jsonData.type : null,
         customName: jsonData && typeof jsonData._custom_name === 'string' ? jsonData._custom_name : null,
         displayName: buildPresetDisplayName(fileName, printerId, versionType, jsonData),
         modifiedAt: stats.mtimeMs,

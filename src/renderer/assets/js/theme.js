@@ -230,6 +230,35 @@ function applyCustomColor() {
     closeCustomColorPicker();
 }
 
+function syncColorFromHex(hexValue) {
+    if (typeof hexValue !== 'string') return null;
+    let pureHex = hexValue.trim().replace(/^#/, '').replace(/[^0-9A-Fa-f]/g, '').substring(0, 6);
+    if (pureHex.length !== 6) return null;
+
+    colorHSV = hexToHsv(pureHex);
+    const input = document.getElementById('hexColorInput');
+    if (input) input.value = pureHex.toUpperCase();
+    updateColorUI(false);
+    return `#${pureHex.toUpperCase()}`;
+}
+
+function syncColorFromNative(colorValue) {
+    if (typeof colorValue !== 'string') return null;
+    const normalized = colorValue.trim();
+
+    if (normalized.startsWith('#')) {
+        return syncColorFromHex(normalized);
+    }
+
+    const parts = normalized.split(',').map((part) => Number(part.trim()));
+    if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+        return null;
+    }
+
+    const [r, g, b] = parts.map((part) => Math.max(0, Math.min(255, Math.round(part))));
+    return syncColorFromHex(`#${rgbToHex(r, g, b)}`);
+}
+
 // 暴露 API
 window.openCustomColorPicker = openCustomColorPicker;
 window.closeCustomColorPicker = closeCustomColorPicker;

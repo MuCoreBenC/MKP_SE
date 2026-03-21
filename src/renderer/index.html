@@ -234,302 +234,17 @@
       </div>
 
       <div id="page-download" class="page flex-1 hidden" data-fixed-header="true">
-        <div class="page-header page-header-fixed-shell w-full">
-          <div class="page-header-top">
-            <h1 id="title-page-download" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">模型预设</h1>
-            <div class="flex items-center gap-3 relative">
-              <button id="btn-download-prev" onclick="document.querySelector('[data-page=\'home\']').click()" class="btn-secondary px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
-                <span>上一步</span>
-              </button>
-              <button id="downloadBtn" onclick="document.querySelector('[data-page=\'calibrate\']').click()" class="theme-btn-solid px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all" disabled>
-                <span>下一步</span>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
-              </button>
-              <div id="downloadHintWrapper" class="absolute -bottom-6 right-1 flex items-center gap-1 text-amber-500 transition-opacity duration-300">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                <span class="text-[11px]">请完成选择</span>
-              </div>
-            </div>
-          </div>
-          <div class="page-header-sub">
-            <p class="text-sm text-gray-500 dark:text-gray-400 leading-none">选择版本类型和发布日期以获取对应的预设配置</p>
-          </div>
-        </div>
-        
-        <div class="page-content hide-scrollbar">
-          <div class="max-w-4xl flex flex-col">
-            <div class="max-w-4xl space-y-8">
-              <div>
-                <div class="flex items-center gap-3 mb-4">
-                  <svg class="w-6 h-6 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                  </svg>
-                  <div>
-                    <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">选择版本类型</h2>
-                    <p class="text-xs text-gray-500">根据您的打印机配置选择合适的版本</p>
-                  </div>
-                </div>
-                <div id="react-download-page-root" class="mb-6"></div>
-                <div id="downloadVersionList" class="flex flex-col gap-3"></div>
-              </div>
-
-              <div>
-                <div class="mb-8">
-                  <div class="flex items-center justify-between mb-4">
-                      <div class="flex items-center gap-3">
-                        <svg id="step2Badge" class="w-6 h-6 text-gray-400 flex-shrink-0 duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                        </svg>
-                        <div>
-                          <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">本地预设</h2>
-                          <p class="text-xs text-gray-500">已存储在您电脑中的配置，进入批量模式后可排序和拖拽</p>
-                        </div>
-                      </div>
-                      
-                    <div class="flex items-center gap-1.5">
-                        <div id="localSearchWrapper" class="hidden relative animate-scale-in origin-right">
-                          <input type="text" id="localSearchInput" placeholder="搜索文件名.." class="input-field w-36 pl-8 pr-3 py-1.5 rounded-lg text-xs border border-gray-200 dark:border-[#444] bg-white dark:bg-[#252526]" oninput="handleLocalSearch(this.value)">
-                          <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                        </div>
-                        <button onclick="toggleLocalSearch()" class="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors rounded-md hover:bg-gray-100 dark:hover:bg-[#333]" title="搜索本地文件">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                        </button>
-                        
-                        <button onclick="toggleMultiSelectMode()" id="btnMultiSelect" class="p-1.5 text-gray-400 hover:text-blue-500 transition-colors rounded-md hover:bg-gray-100 dark:hover:bg-[#333]" title="批量管理">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
-                        </button>
-                        <select id="localSortSelect" onchange="setLocalSortMode(this.value)" class="input-field hidden text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-[#444] bg-white dark:bg-[#252526] text-gray-600 dark:text-gray-300">
-                          <option value="custom">自定义</option>
-                          <option value="version-desc">版本</option>
-                          <option value="updated-desc">最近</option>
-                          <option value="name-asc">名称</option>
-                        </select>
-                        <div id="localManagerDivider" class="hidden w-px h-4 bg-gray-200 dark:bg-[#444] mx-1"></div>
-                        <button id="checkUpdateBtn" onclick="checkOnlineUpdates(this)" class="relative text-sm font-medium flex items-center gap-1.5 px-4 py-1.5 rounded-lg theme-btn-soft transition-all">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                          <span>检查预设</span>
-                        </button>
-                      </div>
-                    </div>
-                  <div id="localBatchToolbar" class="hidden mb-4 rounded-xl border border-gray-200 dark:border-[#333] bg-gray-50/80 dark:bg-[#1E1E1E] px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div id="localBatchSummary" class="text-xs text-gray-500 dark:text-gray-400">批量模式已开启，可点击卡片或使用右键菜单。</div>
-                    <div class="flex flex-wrap items-center gap-2">
-                      <button onclick="toggleSelectAllLocal()" id="btnSelectAllLocal" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-[#252526] border border-gray-200 dark:border-[#444] text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] transition-colors">全选当前</button>
-                      <button onclick="invertLocalSelection()" id="btnInvertLocal" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-[#252526] border border-gray-200 dark:border-[#444] text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] transition-colors">反选当前</button>
-                      <button onclick="executeBatchDuplicate()" id="btnBatchDuplicate" class="px-3 py-1.5 rounded-lg text-xs font-medium theme-btn-soft transition-colors">复制选中</button>
-                      <button onclick="executeBatchDelete()" id="btnBatchDelete" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 transition-colors">删除选中</button>
-                    </div>
-                  </div>
-                  <div id="localPresetsContainer" class="bg-white dark:bg-[#252526] rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden duration-300 transition-colors">
-                    <div id="localEmptyState" class="p-8 flex flex-col items-center justify-center text-center">
-                      <p class="text-sm text-gray-500 dark:text-gray-400">请先在上方选择版本类型。</p>
-                    </div>
-                    <div id="localPresetsList" class="hidden flex-col divide-y divide-gray-100 dark:divide-[#333]"></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div class="flex items-center gap-3 mb-4">
-                    <svg class="w-6 h-6 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-                    </svg>
-                    <div>
-                      <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">在线预设</h2>
-                      <p class="text-xs text-gray-500">云端最新的配置文件，下载后将出现在本地预设中</p>
-                    </div>
-                  </div>
-                  <div id="onlinePresetsContainer" class="bg-white dark:bg-[#252526] rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden duration-300 transition-colors">
-                    <div id="onlineEmptyState" class="p-8 flex flex-col items-center justify-center text-center">
-                      <p class="text-sm text-gray-500 dark:text-gray-400">点击上方的"检查更新"获取云端预设</p>
-                    </div>
-                    <div id="onlinePresetsList" class="hidden flex-col divide-y divide-gray-100 dark:divide-[#333]"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div id="react-download-page-root" class="mkp-react-page-root hidden" aria-hidden="true"></div>
       </div>
 
       <div id="page-calibrate" class="page flex-1 hidden" data-fixed-header="true">
-        <div class="page-header page-header-fixed-shell w-full">
-          <div class="page-header-top">
-            <h1 id="title-page-calibrate" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">校准偏移</h1>
-            <div class="flex items-center gap-3">
-              <button id="btn-calibrate-prev" onclick="document.querySelector('[data-page=\'download\']').click()" class="btn-secondary px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
-                <span>上一步</span>
-              </button>
-            </div>
-          </div>
-          <div class="page-header-sub"></div>
-        </div>
-        <div class="page-content hide-scrollbar">
-          <div class="max-w-4xl">
-            <div class="bg-white dark:bg-[#252526] rounded-xl card-shadow border border-transparent dark:border-[#333] p-5 mb-5 transition-colors">
-              <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">脚本路径：主页->其他->后处理脚本</div>
-              <div class="flex items-center gap-2">
-                <input type="text" id="scriptPath" class="input-field input-readonly flex-1 px-4 py-2.5 rounded-lg text-sm" readonly title="后处理脚本路径" placeholder="请先选择机型和版本">
-                <button id="scriptCopyBtn" onclick="copyPath()" class="theme-btn-soft h-9 min-w-[36px] px-2 rounded-lg flex items-center justify-center transition-all">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/>
-                    </svg>
-                </button>
-              </div>
-            </div>
-
-            <div class="bg-white dark:bg-[#252526] rounded-xl card-shadow border border-transparent dark:border-[#333] p-5 mb-5 transition-colors" id="zCalibrationCard">
-              <div class="calibration-card-head">
-                <div class="calibration-card-title text-sm font-medium text-gray-700 dark:text-gray-300">Z轴偏移校准</div>
-                <div class="calibration-card-actions">
-                  <button id="zDirectEditBtn" onclick="openZGridDirectly()" class="bg-white dark:bg-[#252526] border border-gray-200 dark:border-[#444] text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-[#2A2A2A] transition-all shadow-sm">
-                    不打开模型直接修改
-                  </button>
-                  
-                  <button id="zOpenBtn" onclick="openZModel()" class="theme-btn-solid px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <span>打开校准模型</span>
-                  </button>
-                </div>
-              </div>
-              <div id="zCalibrationArea">
-                <div id="zProgress" class="hidden mb-4">
-                  <div class="h-1 bg-gray-100 dark:bg-[#333] rounded-full overflow-hidden">
-                    <div class="h-full theme-bg-solid rounded-full animate-pulse" style="width: 100%"></div>
-                  </div>
-                </div>
-                <div id="zPlaceholder" class="py-8 bg-gray-50 dark:bg-[#1E1E1E] rounded-xl border border-dashed border-gray-200 dark:border-[#444] flex flex-col items-center justify-center">
-                  <svg class="w-10 h-10 text-gray-400 dark:text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
-                  </svg>
-                  
-                  <div id="zCurrentOffsetSummary" class="hidden text-2xl font-black theme-text mb-3 tracking-tight">
-                    当前预设的Z偏移值为：<span id="currentZOffsetDisplay">--</span>
-                  </div>
-
-                  <span class="text-sm text-gray-400 dark:text-gray-500">点击右上方打开校准模型按钮加载可视化校准网格</span>
-                  <span class="text-sm text-gray-400 dark:text-gray-500">点击后请耐心等待3mf打开...</span>
-                </div>
-                <div id="zGridSelector" class="hidden">
-                  <div class="flex flex-col items-center">
-                    <div class="flex items-center justify-center gap-1 mb-4" id="zGrid"></div>
-                    <div class="z-value-compare flex items-center justify-center gap-4 py-4">
-                      <div class="z-value-column text-center">
-                        <div class="text-xs text-gray-400 mb-1">原始值</div>
-                        <div class="z-value-number text-3xl font-semibold text-gray-400" id="zOriginal">3.3</div>
-                      </div>
-                      <div class="z-value-arrow-column">
-                        <div id="zBadge" class="hidden text-xs font-medium px-2 py-0.5 rounded-full theme-bg-soft theme-text mb-1">-0.2</div>
-                        <svg class="z-value-arrow w-8 h-8 theme-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
-                        </svg>
-                      </div>
-                      <div class="z-value-column text-center">
-                        <div class="text-xs text-gray-400 mb-1">修改后</div>
-                        <div class="z-value-number text-3xl font-bold theme-text" id="zNewValue">3.1</div>
-                      </div>
-                    </div>
-                    <div class="flex justify-center mt-4">
-                      <button onclick="saveZOffset(this)" class="theme-btn-solid px-6 py-2.5 rounded-lg text-sm font-medium transition-all">保存并应用 Z 轴偏移</button>                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-white dark:bg-[#252526] rounded-xl card-shadow border border-transparent dark:border-[#333] p-5 transition-colors" id="xyCalibrationCard">
-              <div class="calibration-card-head">
-                <div class="calibration-card-title text-sm font-medium text-gray-700 dark:text-gray-300">XY轴偏移校准</div>
-                <div class="calibration-card-actions">
-                  <button id="xyDirectEditBtn" onclick="openXYGridDirectly()" class="bg-white dark:bg-[#252526] border border-gray-200 dark:border-[#444] text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-[#2A2A2A] transition-all shadow-sm">
-                    不打开模型直接修改
-                  </button>
-                  <button id="xyOpenBtn" onclick="openXYModel()" class="theme-btn-solid px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <span>打开校准模型</span>
-                  </button>
-                </div>
-              </div>
-              <div id="xyCalibrationArea">
-                <div id="xyProgress" class="hidden mb-4">
-                  <div class="h-1 bg-gray-100 dark:bg-[#333] rounded-full overflow-hidden">
-                    <div class="h-full theme-bg-solid rounded-full animate-pulse" style="width: 100%"></div>
-                  </div>
-                </div>
-                <div id="xyPlaceholder" class="h-48 bg-gray-50 dark:bg-[#1E1E1E] rounded-xl border border-dashed border-gray-200 dark:border-[#444] flex flex-col items-center justify-center">
-                  <svg class="w-10 h-10 text-gray-400 dark:text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
-                  </svg>
-                  <div id="xyCurrentOffsetSummary" class="hidden text-xl font-black theme-text mb-3 tracking-tight text-center">
-                    当前预设的XY偏移值为：X <span id="currentXOffsetDisplay">--</span> / Y <span id="currentYOffsetDisplay">--</span>
-                  </div>
-                  <span class="text-sm text-gray-400 dark:text-gray-500">点击右上方打开校准模型按钮加载可视化校准网格</span>
-                  <span class="text-sm text-gray-400 dark:text-gray-500">点击后请耐心等待3mf打开...</span>
-                </div>
-                <div id="xyGridSelector" class="hidden">
-                  <div class="xy-stage py-2">
-                    <div class="xy-y-axis" id="xyYGrid"></div>
-                    <div class="xy-main-column">
-                      <div class="xy-summary-card">
-                        <div class="xy-summary-row">
-                          <div class="xy-summary-label">X</div>
-                          <div class="xy-summary-values">
-                            <div class="xy-summary-value">
-                              <div class="xy-summary-caption">原始值</div>
-                              <div class="xy-summary-number" id="xyOriginalX">0.00</div>
-                            </div>
-                            <div class="xy-summary-arrow-wrap">
-                              <div id="xyBadgeX" class="hidden text-xs font-medium px-2 py-0.5 rounded-full theme-bg-soft theme-text">+0.00</div>
-                              <svg class="xy-summary-arrow w-7 h-7 theme-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
-                              </svg>
-                            </div>
-                            <div class="xy-summary-value">
-                              <div class="xy-summary-caption">修改后</div>
-                              <div class="xy-summary-number theme-text" id="xyNewX">0.00</div>
-                            </div>
-                          </div>
-                        </div>
-                        <div class="xy-summary-divider"></div>
-                        <div class="xy-summary-row">
-                          <div class="xy-summary-label">Y</div>
-                          <div class="xy-summary-values">
-                            <div class="xy-summary-value">
-                              <div class="xy-summary-caption">原始值</div>
-                              <div class="xy-summary-number" id="xyOriginalY">0.00</div>
-                            </div>
-                            <div class="xy-summary-arrow-wrap">
-                              <div id="xyBadgeY" class="hidden text-xs font-medium px-2 py-0.5 rounded-full theme-bg-soft theme-text">+0.00</div>
-                              <svg class="xy-summary-arrow w-7 h-7 theme-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
-                              </svg>
-                            </div>
-                            <div class="xy-summary-value">
-                              <div class="xy-summary-caption">修改后</div>
-                              <div class="xy-summary-number theme-text" id="xyNewY">0.00</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="xy-x-axis" id="xyXGrid"></div>
-                    </div>
-                  </div>
-                  <div class="flex justify-center mt-4">
-                    <button onclick="saveXYOffset(this)" class="theme-btn-solid px-6 py-2.5 rounded-lg text-sm font-medium transition-all">保存并应用 XY 轴偏移</button>                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div id="react-calibrate-page-root" class="mkp-react-page-root hidden" aria-hidden="true"></div>
+        <div id="calibrateLegacyShell" class="mkp-react-page-legacy-shell hidden" aria-hidden="true"></div>
       </div>
 
       <div id="page-params" class="page flex-1 hidden" data-fixed-header="true">
+        <div id="react-params-page-root" class="mkp-react-page-root hidden" aria-hidden="true"></div>
+        <div id="paramsLegacyShell" class="mkp-react-page-legacy-shell" aria-hidden="false">
         <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top">
             <h1 id="title-page-params" class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">修改参数</h1>
@@ -568,6 +283,7 @@
             </div>
             <div id="dynamicParamsContainer" class="grid grid-cols-1 gap-6"></div>
           </div>
+        </div>
         </div>
       </div>
 
@@ -811,6 +527,8 @@
       </div>
 
       <div id="page-setting" class="page flex-1 hidden" data-fixed-header="true">
+        <div id="react-setting-page-root" class="mkp-react-page-root hidden" aria-hidden="true"></div>
+        <div id="settingLegacyShell" class="mkp-react-page-legacy-shell" aria-hidden="false">
         
         <div class="page-header page-header-fixed-shell w-full">
           <div class="page-header-top">
@@ -1123,7 +841,7 @@
                     <svg class="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     <span class="font-mono">668350689</span>
                   </button>
-                  <button class="theme-btn-soft px-4 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all" onclick="if(window.mkpAPI) window.mkpAPI.exportBugReport()">
+                  <button id="btn-setting-bug-report" class="theme-btn-soft px-4 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all" onclick="exportDiagnosticBundle(this)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     生成诊断报告 (至桌面)
                   </button>
@@ -1134,11 +852,165 @@
 
           </div>
         </div>
+        </div>
       </div>
 
 
     </main>
   </div>
+
+<div id="downloadLegacyShell" class="mkp-react-page-legacy-shell hidden" aria-hidden="true">
+  <div class="page-header page-header-fixed-shell w-full">
+    <div class="page-header-top">
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">模型预设</h1>
+      <div class="flex items-center gap-3 relative">
+        <button id="btn-download-prev" onclick="document.querySelector('[data-page=\'home\']').click()" class="btn-secondary px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+          <span>上一步</span>
+        </button>
+        <button id="downloadBtn" onclick="document.querySelector('[data-page=\'calibrate\']').click()" class="theme-btn-solid px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all" disabled>
+          <span>下一步</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+        </button>
+        <div id="downloadHintWrapper" class="absolute -bottom-6 right-1 flex items-center gap-1 text-amber-500 transition-opacity duration-300">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span class="text-[11px]">请完成选择</span>
+        </div>
+      </div>
+    </div>
+    <div class="page-header-sub">
+      <p class="text-sm text-gray-500 dark:text-gray-400 leading-none">选择版本类型和发布日期以获取对应的预设配置</p>
+    </div>
+  </div>
+
+  <div class="page-content hide-scrollbar">
+    <div class="max-w-4xl space-y-8">
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <svg class="w-6 h-6 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          <div>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">选择版本类型</h2>
+            <p class="text-xs text-gray-500">根据您的打印机配置选择合适的版本</p>
+          </div>
+        </div>
+        <div id="downloadVersionList" class="flex flex-col gap-3"></div>
+      </div>
+
+      <div>
+        <div class="mb-8">
+          <div class="local-preset-toolbar mb-4">
+            <div class="local-preset-toolbar__meta">
+              <svg id="step2Badge" class="w-6 h-6 text-gray-400 flex-shrink-0 duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+              </svg>
+              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100 flex-shrink-0">本地预设</h2>
+              <button
+                type="button"
+                id="localPresetInfoAnchor"
+                class="param-tooltip-anchor local-preset-info-anchor"
+                data-tip-title="本地预设说明"
+                data-tip-body="这里显示已经下载到电脑中的预设。可搜索、拖拽排序、右键管理；进入多选模式后可批量选择和删除。"
+                aria-label="本地预设说明"
+              >
+                <span class="param-help-dot">?</span>
+              </button>
+            </div>
+
+            <div class="local-preset-toolbar__actions">
+              <div id="localHeaderBatchControls" class="local-preset-batch-actions" aria-hidden="true">
+                <button onclick="toggleSelectAllLocal()" id="btnSelectAllLocal" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-[#252526] border border-gray-200 dark:border-[#444] text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] transition-colors whitespace-nowrap">全选</button>
+                <button onclick="invertLocalSelection()" id="btnInvertLocal" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-[#252526] border border-gray-200 dark:border-[#444] text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] transition-colors whitespace-nowrap">反选</button>
+                <button onclick="executeBatchDelete()" id="btnBatchDelete" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 transition-colors whitespace-nowrap">删除</button>
+              </div>
+
+              <div class="local-search-shell">
+                <div id="localSearchWrapper" class="hidden local-search-inline animate-scale-in origin-right">
+                  <div class="local-search-inline__field">
+                    <input type="text" id="localSearchInput" placeholder="搜索文件名..." class="input-field h-9 w-full pl-8 pr-3 rounded-lg text-xs border border-gray-200 dark:border-[#444] bg-white dark:bg-[#252526]" oninput="handleLocalSearch(this.value)">
+                    <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                  </div>
+                </div>
+                <button onclick="toggleLocalSearch()" id="btnLocalSearchToggle" class="h-9 w-9 flex items-center justify-center flex-shrink-0 text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors rounded-md hover:bg-gray-100 dark:hover:bg-[#333]" title="搜索本地文件" aria-label="搜索本地文件" aria-expanded="false">
+                  <span data-local-search-toggle-icon>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                  </span>
+                </button>
+              </div>
+
+              <button onclick="toggleMultiSelectMode()" id="btnMultiSelect" class="h-9 w-9 flex items-center justify-center flex-shrink-0 text-gray-400 hover:text-blue-500 transition-colors rounded-md hover:bg-gray-100 dark:hover:bg-[#333]" title="批量管理">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 1024 1024" aria-hidden="true">
+                  <path d="M321.28 724.032a32 32 0 0 1 3.712 40.832l-3.712 4.48-128 128a32 32 0 0 1-40.832 3.648l-4.416-3.712-64-64a32 32 0 0 1 40.832-48.96l4.48 3.712 41.344 41.344 105.344-105.344a32 32 0 0 1 45.248 0z m596.032 54.656a32 32 0 0 1 5.76 63.488l-5.76 0.512H448a32 32 0 0 1-5.76-63.488l5.76-0.512h469.312zM321.28 425.408a32 32 0 0 1 3.712 40.768l-3.712 4.48-128 128a32 32 0 0 1-40.832 3.648l-4.416-3.648-64-64a32 32 0 0 1 40.832-48.96l4.48 3.648 41.344 41.408 105.344-105.408a32 32 0 0 1 45.248 0z m596.032 54.592a32 32 0 0 1 5.76 63.488l-5.76 0.512H448a32 32 0 0 1-5.76-63.488L448 480h469.312zM321.28 126.72a32 32 0 0 1 3.712 40.832l-3.712 4.416-128 128a32 32 0 0 1-40.832 3.712l-4.416-3.712-64-64a32 32 0 0 1 40.832-48.96l4.48 3.712 41.344 41.344L276.032 126.72a32 32 0 0 1 45.248 0z m596.032 54.592a32 32 0 0 1 5.76 63.488l-5.76 0.512H448a32 32 0 0 1-5.76-63.488L448 181.312h469.312z"></path>
+                </svg>
+              </button>
+
+              <div class="local-toolbar-menu-shell">
+                <button type="button" onclick="toggleLocalToolbarMenu(event)" id="btnLocalToolbarMore" class="h-9 w-9 flex items-center justify-center flex-shrink-0 text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors rounded-md hover:bg-gray-100 dark:hover:bg-[#333]" title="更多操作" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6h.01M12 12h.01M12 18h.01M6 6h.01M6 12h.01M6 18h.01M18 6h.01M18 12h.01M18 18h.01"/>
+                  </svg>
+                </button>
+                <div id="localToolbarMenu" class="hidden local-toolbar-menu" data-floating-surface="true" role="menu" aria-hidden="true">
+                  <div class="local-toolbar-menu__title">排序方式</div>
+                  <div class="local-toolbar-menu__list">
+                    <button type="button" id="localSortOptionCustom" class="local-toolbar-menu__item" data-local-sort-option="custom" onclick="applyLocalSortMode('custom', event)">自定义顺序</button>
+                    <button type="button" id="localSortOptionVersion" class="local-toolbar-menu__item" data-local-sort-option="version-desc" onclick="applyLocalSortMode('version-desc', event)">版本从新到旧</button>
+                    <button type="button" id="localSortOptionUpdated" class="local-toolbar-menu__item" data-local-sort-option="updated-desc" onclick="applyLocalSortMode('updated-desc', event)">最近修改优先</button>
+                    <button type="button" id="localSortOptionName" class="local-toolbar-menu__item" data-local-sort-option="name-asc" onclick="applyLocalSortMode('name-asc', event)">名称 A-Z</button>
+                  </div>
+                </div>
+              </div>
+
+              <button id="checkUpdateBtn" onclick="checkOnlineUpdates(this)" class="relative h-9 px-4 text-sm font-medium inline-flex items-center justify-center gap-1.5 rounded-lg theme-btn-soft transition-all whitespace-nowrap flex-shrink-0">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span class="whitespace-nowrap">检查预设</span>
+              </button>
+            </div>
+          </div>
+          <div id="localPresetsContainer" class="bg-white dark:bg-[#252526] rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden duration-300 transition-colors">
+            <div id="localEmptyState" class="p-8 flex flex-col items-center justify-center text-center">
+              <p class="text-sm text-gray-500 dark:text-gray-400">请先在上方选择版本类型。</p>
+            </div>
+            <div id="localPresetsList" class="hidden flex-col divide-y divide-gray-100 dark:divide-[#333]"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center gap-3 mb-4">
+            <svg class="w-6 h-6 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+            </svg>
+            <div>
+              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">在线预设</h2>
+              <p class="text-xs text-gray-500">云端最新的配置文件，下载后将出现在本地预设中</p>
+            </div>
+          </div>
+          <div id="onlinePresetsContainer" class="bg-white dark:bg-[#252526] rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden duration-300 transition-colors">
+            <div id="onlineEmptyState" class="p-8 flex flex-col items-center justify-center text-center">
+              <p class="text-sm text-gray-500 dark:text-gray-400">点击上方的"检查更新"获取云端预设</p>
+            </div>
+            <div id="onlinePresetsList" class="hidden flex-col divide-y divide-gray-100 dark:divide-[#333]"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function attachDownloadPageLegacyShell() {
+    const page = document.getElementById('page-download');
+    const legacyShell = document.getElementById('downloadLegacyShell');
+    if (!page || !legacyShell || legacyShell.parentElement === page) {
+      return;
+    }
+
+    page.appendChild(legacyShell);
+    legacyShell.classList.remove('hidden');
+    legacyShell.setAttribute('aria-hidden', 'false');
+  })();
+</script>
 
 
 <div id="mkp-global-modal" class="fixed inset-0 z-[9999] flex items-center justify-center px-4 transition-all duration-300 opacity-0 pointer-events-none">
@@ -1334,15 +1206,22 @@
       }
     })();
   </script>
-  <script type="module">
-    import { mountModernRuntime } from './app/entry/renderer-runtime.ts';
-    import { mountDownloadReactPage } from './react-app/entry/download-page-entry.tsx';
-
+  <script>
+    window.process = window.process || { env: { NODE_ENV: 'production' } };
+  </script>
+  <script src="assets/js/generated/renderer-runtime.bundle.js"></script>
+  <script src="assets/js/generated/react-pages.bundle.js"></script>
+  <script>
     try {
-      mountModernRuntime(window);
-      const reactDownloadRoot = document.getElementById('react-download-page-root');
-      if (reactDownloadRoot) {
-        mountDownloadReactPage(reactDownloadRoot);
+      if (window.MKPModernRendererRuntime?.mountModernRuntime) {
+        window.MKPModernRendererRuntime.mountModernRuntime(window);
+      } else {
+        console.warn('[MKP Modern Runtime] bundle unavailable');
+      }
+      if (window.MKPReactPagesBundle?.mountRegisteredReactPages) {
+        window.MKPReactPagesBundle.mountRegisteredReactPages(document);
+      } else {
+        console.warn('[MKP React Pages] bundle unavailable, using legacy page shells');
       }
     } catch (error) {
       console.error('[MKP Modern Runtime] bootstrap failed', error);

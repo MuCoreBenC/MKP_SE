@@ -1,6 +1,9 @@
 (function () {
   const POLL_MS = 160;
   const DEFAULT_MIN_VISUAL_PROGRESS_MS = 1000;
+  const MIN_BOOT_STAGE_MS = 520;
+  const RESULT_SWAP_OUT_MS = 120;
+
   let reportState = null;
   let reportFingerprint = '';
   let expanded = false;
@@ -10,26 +13,32 @@
   let countdownRemaining = 0;
   let visualProgress = 0;
   let visualProgressFrame = 0;
+  let bootStartedAt = 0;
+  let hasEnteredRuntimeStage = false;
+  let bootRevealTimer = null;
+  let lastRenderedStatus = null;
+  let runtimeSwapPromise = Promise.resolve();
 
   const refs = {
+    prototypeShell: document.getElementById('prototypeShell'),
+    bootCaption: document.getElementById('bootCaption'),
+    bootTitle: document.getElementById('bootTitle'),
+    bootCopy: document.getElementById('bootCopy'),
+    bootPhase: document.getElementById('bootPhase'),
+    bootPercent: document.getElementById('bootPercent'),
+    runtimeContent: document.getElementById('runtimeContent'),
+    progressPanel: document.getElementById('progressPanel'),
     statusBadge: document.getElementById('statusBadge'),
     reportWindowTitle: document.getElementById('reportWindowTitle'),
+    progressLabel: document.getElementById('progressLabel'),
     summaryTitle: document.getElementById('summaryTitle'),
     summaryText: document.getElementById('summaryText'),
     countdownText: document.getElementById('countdownText'),
-    progressPanel: document.getElementById('progressPanel'),
-    progressLabel: document.getElementById('progressLabel'),
-    progressDetail: document.getElementById('progressDetail'),
     progressFill: document.getElementById('progressFill'),
     progressPercent: document.getElementById('progressPercent'),
     progressStepText: document.getElementById('progressStepText'),
-    progressStages: Array.from(document.querySelectorAll('.progress-stage')),
-    metricInjected: document.getElementById('metricInjected'),
-    metricScan: document.getElementById('metricScan'),
-    metricScanSub: document.getElementById('metricScanSub'),
-    metricDuration: document.getElementById('metricDuration'),
     metricOutput: document.getElementById('metricOutput'),
-    metricOutputSub: document.getElementById('metricOutputSub'),
+    metricDuration: document.getElementById('metricDuration'),
     detailPanel: document.getElementById('detailPanel'),
     pathSummary: document.getElementById('pathSummary'),
     summaryCode: document.getElementById('summaryCode'),
@@ -65,7 +74,7 @@
       return '--';
     }
 
-    return (durationMs / 1000).toFixed(durationMs >= 10000 ? 1 : 2);
+    return `${(durationMs / 1000).toFixed(durationMs >= 10000 ? 1 : 2)}s`;
   }
 
   function formatPathForCard(filePath) {
@@ -78,16 +87,16 @@
     return parts[parts.length - 1] || normalized;
   }
 
-  function getVisualMinimumDurationMs(state) {
-    const rawValue = Number(state?.ui?.minimumProgressDurationMs || DEFAULT_MIN_VISUAL_PROGRESS_MS);
-    return Number.isFinite(rawValue) && rawValue > 0
-      ? rawValue
-      : DEFAULT_MIN_VISUAL_PROGRESS_MS;
-  }
-
-  function getLatestStep(state) {
-    const steps = Array.isArray(state?.steps) ? state.steps : [];
-    return steps.length > 0 ? steps[steps.length - 1] : null;
+  function buildSummaryCode(state) {
+    const summary = state?.summary || {};
+    return [
+      `supportInterfaceCandidates=${summary.supportInterfaceCandidates || 0}`,
+      `supportSurfaceIroningCandidates=${summary.supportSurfaceIroningCandidates || 0}`,
+      `ignoredTopSurfaceIroningSegments=${summary.ignoredTopSurfaceIroningSegments || 0}`,
+      `skippedInvalidSegments=${summary.skippedInvalidSegments || 0}`,
+      `skippedExcessiveIroningSegments=${summary.skippedExcessiveIroningSegments || 0}`,
+      `injectedSegments=${summary.injectedSegments || 0}`
+    ].join('\n');
   }
 
   function buildReportFingerprint(state) {
@@ -95,16 +104,74 @@
       status: state?.status || 'unknown',
       finishedAt: state?.finishedAt || null,
       durationMs: state?.durationMs || 0,
-      steps: state?.steps?.length || 0,
       progressPercent: state?.progress?.percent ?? null,
       progressLabel: state?.progress?.label || '',
       progressDetail: state?.progress?.detail || '',
       progressCurrentStepTitle: state?.progress?.currentStepTitle || '',
       progressUpdatedAt: state?.progress?.updatedAt || '',
-      injectedSegments: state?.summary?.injectedSegments || 0,
-      skippedExcessiveIroningSegments: state?.summary?.skippedExcessiveIroningSegments || 0,
-      ignoredTopSurfaceIroningSegments: state?.summary?.ignoredTopSurfaceIroningSegments || 0
+      outputPath: state?.outputPath || '',
+      steps: state?.steps?.length || 0
     });
+  }
+
+  function getLatestStep(state) {
+    const steps = Array.isArray(state?.steps) ? state.steps : [];
+    return steps.length > 0 ? steps[steps.length - 1] : null;
+  }
+
+  function getVisualMinimumDurationMs(state) {
+    const rawValue = Number(state?.ui?.minimumProgressDurationMs || DEFAULT_MIN_VISUAL_PROGRESS_MS);
+    return Number.isFinite(rawValue) && rawValue > 0
+      ? rawValue
+      : DEFAULT_MIN_VISUAL_PROGRESS_MS;
+  }
+
+  function getStatusText(status) {
+    if (status === 'completed') {
+      return '已完成';
+    }
+
+    if (status === 'failed') {
+      return '失败';
+    }
+
+    return '运行中';
+  }
+
+  function getWindowTitle(status) {
+    if (status === 'completed') {
+      return 'MKP 后处理已完成';
+    }
+
+    if (status === 'failed') {
+      return 'MKP 后处理失败';
+    }
+
+    return 'MKP 后处理中';
+  }
+
+  function getHeadline(state) {
+    if (state?.status === 'completed') {
+      return '后处理已完成';
+    }
+
+    if (state?.status === 'failed') {
+      return '后处理失败';
+    }
+
+    return state?.progress?.label || '正在处理 G-code';
+  }
+
+  function getSummaryText(state) {
+    if (state?.status === 'completed') {
+      return `已生成 ${formatPathForCard(state?.outputPath)}。结果仍在同一个窗口里呈现，详细步骤可按需展开查看。`;
+    }
+
+    if (state?.status === 'failed') {
+      return '同一窗口会保留失败结果，请展开详细区查看错误原因与技术细节。';
+    }
+
+    return state?.progress?.detail || '窗口会先显示加载动画，再持续同步后处理实时进度。';
   }
 
   function setFeedback(text, kind = '') {
@@ -128,6 +195,13 @@
     if (visualProgressFrame) {
       cancelAnimationFrame(visualProgressFrame);
       visualProgressFrame = 0;
+    }
+  }
+
+  function stopBootRevealTimer() {
+    if (bootRevealTimer) {
+      clearTimeout(bootRevealTimer);
+      bootRevealTimer = null;
     }
   }
 
@@ -160,64 +234,56 @@
     }, 1000);
   }
 
-  function buildSummaryCode(state) {
-    const summary = state?.summary || {};
-    return [
-      `supportInterfaceCandidates=${summary.supportInterfaceCandidates || 0}`,
-      `supportSurfaceIroningCandidates=${summary.supportSurfaceIroningCandidates || 0}`,
-      `ignoredTopSurfaceIroningSegments=${summary.ignoredTopSurfaceIroningSegments || 0}`,
-      `skippedInvalidSegments=${summary.skippedInvalidSegments || 0}`,
-      `skippedExcessiveIroningSegments=${summary.skippedExcessiveIroningSegments || 0}`,
-      `injectedSegments=${summary.injectedSegments || 0}`
-    ].join('\n');
+  function updateBootScreen(state) {
+    const progressPercent = clampPercent(state?.progress?.percent, 0);
+    refs.bootCaption.textContent = 'Classic V2 Preview';
+    refs.bootTitle.textContent = state?.progress?.label || '正在准备后处理窗口';
+    refs.bootCopy.textContent = state?.progress?.detail || '先稳定显示同一个窗口，再接入实时进度。';
+    refs.bootPhase.textContent = state?.progress?.currentStepTitle || '正在连接实时进度';
+    refs.bootPercent.textContent = progressPercent > 0 ? `${Math.round(progressPercent)}%` : '启动中';
   }
 
-  function getStatusText(status) {
-    if (status === 'completed') return '已完成';
-    if (status === 'failed') return '失败';
-    return '运行中';
+  function revealRuntimeStage() {
+    if (hasEnteredRuntimeStage) {
+      return;
+    }
+
+    hasEnteredRuntimeStage = true;
+    refs.prototypeShell.classList.add('is-runtime-visible');
+    stopBootRevealTimer();
   }
 
-  function getScanSummaryText(state) {
-    const summary = state?.summary || {};
-
-    if (state?.status === 'running') {
-      return state?.progress?.label || '处理中';
+  function scheduleRuntimeStageReveal() {
+    if (hasEnteredRuntimeStage) {
+      return;
     }
 
-    if (state?.status === 'failed') {
-      return '处理失败';
-    }
-
-    return [
-      `${summary.supportInterfaceCandidates || 0} 支撑段`,
-      `${summary.supportSurfaceIroningCandidates || 0} 熨烫段`,
-      `${summary.ignoredTopSurfaceIroningSegments || 0} 已忽略`
-    ].join(' / ');
+    const elapsed = performance.now() - bootStartedAt;
+    const waitMs = Math.max(0, MIN_BOOT_STAGE_MS - elapsed);
+    stopBootRevealTimer();
+    bootRevealTimer = window.setTimeout(() => {
+      revealRuntimeStage();
+    }, waitMs);
   }
 
-  function getSummaryTitle(state) {
-    if (state?.status === 'completed') {
-      return '后处理已完成，可以查看完整执行过程';
+  async function animateRuntimeResultSwap(updateFn) {
+    const target = refs.runtimeContent;
+    if (!target) {
+      updateFn();
+      return;
     }
 
-    if (state?.status === 'failed') {
-      return '后处理失败，请查看详细步骤';
-    }
-
-    return state?.progress?.label || '正在执行后处理';
-  }
-
-  function getSummaryText(state) {
-    if (state?.status === 'completed') {
-      return '窗口会保持当前摘要视图；如需查看完整过程，可展开切换到普通步骤或代码步骤，也可以直接导出轨迹或处理后的 G-code。';
-    }
-
-    if (state?.status === 'failed') {
-      return '失败状态下不会自动关闭，方便直接定位出错步骤和技术细节。';
-    }
-
-    return state?.progress?.detail || '正在执行后处理，请稍候。';
+    target.classList.add('is-swap-out');
+    await new Promise((resolve) => window.setTimeout(resolve, RESULT_SWAP_OUT_MS));
+    updateFn();
+    target.classList.remove('is-swap-out');
+    target.classList.add('is-swap-in');
+    await new Promise((resolve) => window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        target.classList.remove('is-swap-in');
+        resolve();
+      });
+    }));
   }
 
   function renderSteps(state) {
@@ -227,7 +293,7 @@
       return;
     }
 
-    refs.stepsContainer.innerHTML = steps.map((step, index) => {
+    refs.stepsContainer.innerHTML = steps.map((step) => {
       const body = viewMode === 'human'
         ? `<div class="step-body">${escapeHtml(step.human || '暂无普通说明。')}</div>`
         : `<div class="step-technical"><pre>${escapeHtml(step.technical || '暂无技术细节。')}</pre></div>`;
@@ -238,12 +304,7 @@
       return `
         <article class="step-card">
           <div class="step-card-header">
-            <div style="display:flex;gap:12px;min-width:0;flex:1;">
-              <div class="step-index">${index + 1}</div>
-              <div style="min-width:0;">
-                <h2 class="step-title">${escapeHtml(step.title || '未命名步骤')}</h2>
-              </div>
-            </div>
+            <h2 class="step-title">${escapeHtml(step.title || '未命名步骤')}</h2>
             <div class="step-kind">${escapeHtml(step.kind || 'info')}</div>
           </div>
           ${body}
@@ -253,10 +314,15 @@
     }).join('');
   }
 
+  function syncActionLabels() {
+    refs.viewToggleButton.textContent = expanded ? '收起详细' : '查看详细';
+    refs.closeButton.textContent = '关闭';
+  }
+
   async function setExpanded(nextExpanded) {
     expanded = nextExpanded;
     refs.detailPanel.classList.toggle('is-visible', expanded);
-    refs.viewToggleButton.textContent = expanded ? '收起详情' : '查看详情';
+    syncActionLabels();
 
     if (window.mkpAPI?.setPostprocessReportExpanded) {
       await window.mkpAPI.setPostprocessReportExpanded(expanded);
@@ -264,9 +330,9 @@
 
     if (expanded) {
       stopCountdown();
-      setFeedback('详情已展开，窗口不会自动关闭。');
+      setFeedback('详细区已展开，窗口不会自动关闭。');
     } else if (reportState?.status === 'completed') {
-      setFeedback('已回到摘要视图，若不再次展开，窗口会按规则自动关闭。');
+      setFeedback('已回到结果摘要，窗口会按规则自动关闭。');
     }
   }
 
@@ -307,40 +373,6 @@
     const safeProgress = clampPercent(visualProgress, 0);
     refs.progressFill.style.width = `${safeProgress.toFixed(2)}%`;
     refs.progressPercent.textContent = `${Math.round(safeProgress)}%`;
-    renderLifecycleStages(safeProgress);
-  }
-
-  function renderLifecycleStages(displayPercent) {
-    if (!Array.isArray(refs.progressStages) || refs.progressStages.length === 0) {
-      return;
-    }
-
-    const safeProgress = clampPercent(displayPercent, 0);
-    const status = reportState?.status || 'running';
-    const isFailed = status === 'failed';
-
-    refs.progressStages.forEach((stage, index) => {
-      const rawStart = Number(stage.dataset.stageStart);
-      const rawEnd = Number(stage.dataset.stageEnd);
-      const stageStart = Number.isFinite(rawStart) ? rawStart : 0;
-      const stageEnd = Number.isFinite(rawEnd) ? rawEnd : 100;
-      const stageSpan = Math.max(1, stageEnd - stageStart);
-      const isLastStage = index === refs.progressStages.length - 1;
-      const stageReached = safeProgress >= stageStart;
-      const stagePassed = safeProgress >= stageEnd;
-      const stageProgress = safeProgress <= stageStart
-        ? 0
-        : safeProgress >= stageEnd
-          ? 100
-          : ((safeProgress - stageStart) / stageSpan) * 100;
-      const isComplete = stagePassed && (!isFailed || !isLastStage);
-      const isActive = stageReached && (!stagePassed || (isFailed && isLastStage));
-
-      stage.style.setProperty('--stage-progress', `${Math.max(0, Math.min(100, stageProgress)).toFixed(2)}%`);
-      stage.classList.toggle('is-complete', isComplete);
-      stage.classList.toggle('is-active', isActive);
-      stage.classList.toggle('is-pending', !isComplete && !isActive);
-    });
   }
 
   function tickVisualProgress() {
@@ -387,41 +419,27 @@
     }
   }
 
-  function renderState(state) {
-    reportState = state;
+  function applyStateToDom(state) {
     const status = state?.status || 'running';
     const latestStep = getLatestStep(state);
     const currentStepTitle = state?.progress?.currentStepTitle || latestStep?.title || '等待后处理开始';
 
     refs.statusBadge.textContent = getStatusText(status);
     refs.statusBadge.className = `status-badge ${status === 'completed' ? 'status-completed' : status === 'failed' ? 'status-failed' : 'status-running'}`;
-    refs.reportWindowTitle.textContent = status === 'completed'
-      ? 'MKP 后处理完成'
-      : status === 'failed'
-        ? 'MKP 后处理失败'
-        : 'MKP 后处理中';
-    refs.summaryTitle.textContent = getSummaryTitle(state);
+    refs.reportWindowTitle.textContent = getWindowTitle(status);
+    refs.progressLabel.textContent = status === 'running' ? 'CLI 后处理执行中' : 'CLI 后处理结果';
+    refs.summaryTitle.textContent = getHeadline(state);
     refs.summaryText.textContent = getSummaryText(state);
-
-    refs.progressPanel.className = `report-progress ${status === 'completed' ? 'is-completed' : status === 'failed' ? 'is-failed' : 'is-running'}`;
-    refs.progressLabel.textContent = state?.progress?.label || getSummaryTitle(state);
-    refs.progressDetail.textContent = state?.progress?.detail || getSummaryText(state);
+    refs.progressPanel.className = `prototype-progress ${status === 'completed' ? 'is-completed' : status === 'failed' ? 'is-failed' : 'is-running'}`;
     refs.progressStepText.textContent = `当前步骤：${currentStepTitle}`;
-
-    refs.metricInjected.textContent = String(state?.summary?.injectedSegments || 0);
-    refs.metricScan.textContent = getScanSummaryText(state);
-    refs.metricScanSub.textContent = `无效跳过 ${state?.summary?.skippedInvalidSegments || 0} 段 / 过量熨烫取消 ${state?.summary?.skippedExcessiveIroningSegments || 0} 段`;
-    refs.metricDuration.textContent = formatSeconds(state?.durationMs || 0);
     refs.metricOutput.textContent = formatPathForCard(state?.outputPath);
-    refs.metricOutputSub.textContent = state?.outputPath || '处理完成后会显示完整输出路径';
-
+    refs.metricDuration.textContent = status === 'running' ? '--' : formatSeconds(state?.durationMs || 0);
     refs.pathSummary.textContent = [
       `inputPath=${state?.inputPath || 'N/A'}`,
       `outputPath=${state?.outputPath || 'N/A'}`,
       `configPath=${state?.configPath || 'N/A'}`,
       `configFormat=${state?.configFormat || 'N/A'}`
     ].join('\n');
-
     refs.summaryCode.textContent = buildSummaryCode(state);
     refs.exportTraceButton.disabled = !Array.isArray(state?.steps) || state.steps.length === 0;
     refs.exportGcodeButton.disabled = !state?.outputPath || status !== 'completed';
@@ -434,11 +452,35 @@
       setFeedback('处理中...');
     } else if (status === 'failed') {
       stopCountdown();
-      setFeedback('失败状态下不会自动关闭，请先查看详细步骤。', 'error');
+      setFeedback('同一窗口已切换到失败结果，请展开详细区查看原因。', 'error');
     } else if (expanded) {
       stopCountdown();
-      setFeedback('详情已展开，窗口不会自动关闭。');
+      setFeedback('详细区已展开，窗口不会自动关闭。');
     }
+  }
+
+  async function renderState(state) {
+    const nextStatus = state?.status || 'running';
+    const shouldAnimateResultSwap = (
+      hasEnteredRuntimeStage
+      && lastRenderedStatus === 'running'
+      && (nextStatus === 'completed' || nextStatus === 'failed')
+    );
+
+    reportState = state;
+    updateBootScreen(state);
+
+    if (shouldAnimateResultSwap) {
+      runtimeSwapPromise = runtimeSwapPromise.then(() => animateRuntimeResultSwap(() => {
+        applyStateToDom(state);
+      }));
+      await runtimeSwapPromise;
+    } else {
+      applyStateToDom(state);
+    }
+
+    scheduleRuntimeStageReveal();
+    lastRenderedStatus = nextStatus;
   }
 
   async function refreshState() {
@@ -456,7 +498,7 @@
 
     if (stateChanged) {
       reportFingerprint = nextFingerprint;
-      renderState(state);
+      await renderState(state);
     } else if (reportState) {
       syncVisualProgress();
     }
@@ -471,14 +513,14 @@
       return;
     }
 
-    const result = await window.mkpAPI.exportPostprocessTrace('technical');
+    const result = await window.mkpAPI.exportPostprocessTrace(viewMode === 'technical' ? 'technical' : 'human');
     if (result?.success) {
-      setFeedback(`步骤轨迹已导出到：${result.filePath}`, 'success');
+      setFeedback(`步骤已导出到：${result.filePath}`, 'success');
       return;
     }
 
     if (!result?.canceled) {
-      setFeedback(result?.error || '导出步骤轨迹失败。', 'error');
+      setFeedback(result?.error || '导出步骤失败。', 'error');
     }
   }
 
@@ -526,6 +568,8 @@
   }
 
   async function init() {
+    bootStartedAt = performance.now();
+    syncActionLabels();
     bindEvents();
     renderVisualProgress();
     await refreshState();
@@ -538,6 +582,7 @@
     }
     stopCountdown();
     stopVisualProgressLoop();
+    stopBootRevealTimer();
   });
 
   document.addEventListener('DOMContentLoaded', init);

@@ -1698,11 +1698,102 @@ function buildTrackedFeatureInjection(interfaceBuffer, featureKind, currentZ, co
   return buildInterfaceInjection(cleanedInterface, currentZ, config, runtimeState);
 }
 
+function clampReportPercent(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Math.max(0, Math.min(100, Number(fallback) || 0));
+  }
+
+  return Math.max(0, Math.min(100, numeric));
+}
+
+function buildProgressPercentFromRange(startPercent, endPercent, currentIndex, totalCount) {
+  const safeStart = clampReportPercent(startPercent, 0);
+  const safeEnd = clampReportPercent(endPercent, safeStart);
+  const safeTotal = Math.max(1, Number(totalCount) || 1);
+  const safeIndex = Math.max(0, Math.min(safeTotal, Number(currentIndex) || 0));
+  return safeStart + (((safeEnd - safeStart) * safeIndex) / safeTotal);
+}
+
+function buildReportSnapshot(report) {
+  return JSON.parse(JSON.stringify(report, (key, value) => {
+    if (String(key).startsWith('_')) {
+      return undefined;
+    }
+
+    return value;
+  }));
+}
+
+function emitReportUpdate(report, runtimeOptions = {}, options = {}) {
+  if (!report || typeof runtimeOptions?.onReportUpdate !== 'function') {
+    return;
+  }
+
+  const nowMs = Date.now();
+  const throttleMs = Number.isFinite(runtimeOptions.reportThrottleMs)
+    ? Math.max(0, Number(runtimeOptions.reportThrottleMs))
+    : 120;
+  const force = Boolean(options.force);
+  const percentBucket = Math.floor(clampReportPercent(report.progress?.percent, 0));
+  const emitKey = [
+    report.status || 'running',
+    report.progress?.phase || '',
+    report.progress?.label || '',
+    report.progress?.detail || '',
+    report.progress?.currentStepTitle || '',
+    report.steps.length
+  ].join('|');
+
+  if (!force) {
+    const emittedRecently = nowMs - (report._lastReportedAtMs || 0) < throttleMs;
+    const unchangedBucket = percentBucket === (report._lastReportedPercentBucket ?? -1);
+    const unchangedKey = emitKey === (report._lastReportedKey || '');
+    if (emittedRecently && unchangedBucket && unchangedKey) {
+      return;
+    }
+  }
+
+  report.durationMs = Math.max(0, nowMs - (report._startedAtMs || nowMs));
+  report._lastReportedAtMs = nowMs;
+  report._lastReportedPercentBucket = percentBucket;
+  report._lastReportedKey = emitKey;
+  runtimeOptions.onReportUpdate(buildReportSnapshot(report));
+}
+
+function updateReportProgress(report, runtimeOptions = {}, progress = {}, options = {}) {
+  if (!report) {
+    return;
+  }
+
+  const previousPercent = clampReportPercent(report.progress?.percent, 0);
+  const requestedPercent = progress.percent == null
+    ? previousPercent
+    : clampReportPercent(progress.percent, previousPercent);
+  const nextPercent = report.status === 'running'
+    ? Math.max(previousPercent, requestedPercent)
+    : requestedPercent;
+
+  report.progress = {
+    percent: nextPercent,
+    phase: progress.phase || report.progress?.phase || 'running',
+    label: progress.label || report.progress?.label || '',
+    detail: progress.detail !== undefined ? progress.detail : (report.progress?.detail || ''),
+    currentStepTitle: progress.currentStepTitle !== undefined
+      ? progress.currentStepTitle
+      : (report.progress?.currentStepTitle || ''),
+    updatedAt: new Date().toISOString()
+  };
+
+  emitReportUpdate(report, runtimeOptions, options);
+}
+
 function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') {
   const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
   const report = {
     status: 'running',
-    startedAt: new Date(startedAtMs).toISOString(),
+    startedAt,
     finishedAt: null,
     durationMs: 0,
     inputPath: runtimeOptions.inputPath || null,
@@ -1738,6 +1829,18 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
       futureLollipopMode: config.postProcessing.futureLollipopMode
     },
     runtime: getEngineRuntimeMetadata(runtimeOptions.runtimeInfo || {}),
+    ui: {
+      autoCloseSeconds: 10,
+      minimumProgressDurationMs: 1000
+    },
+    progress: {
+      percent: 18,
+      phase: 'prepare',
+      label: '加载后处理配置',
+      detail: '正在初始化运行时并读取预设参数。',
+      currentStepTitle: '',
+      updatedAt: startedAt
+    },
     steps: [],
     _startedAtMs: startedAtMs
   };
@@ -1752,7 +1855,7 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
       outputPath: report.outputPath,
       configPath: report.configPath
     }
-  });
+  }, runtimeOptions);
 
   if (config.machine?.wipingTowerPosition?.adjusted) {
     const towerPosition = config.machine.wipingTowerPosition;
@@ -1767,7 +1870,7 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
         : 'The raw wipe-tower anchor was outside the safe printable range, so the engine used the nearest safe coordinate.',
       technical: `towerPlacement raw=(${formatCompactNumber(towerPosition.rawWiperX)},${formatCompactNumber(towerPosition.rawWiperY)}) effective=(${formatCompactNumber(towerPosition.wiperX)},${formatCompactNumber(towerPosition.wiperY)})${blockedZonesText}`,
       data: towerPosition
-    });
+    }, runtimeOptions);
   }
 
   pushReportStep(report, {
@@ -1780,7 +1883,7 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
     data: {
       ironingPathOffsetMm: config.postProcessing.ironingPathOffsetMm
     }
-  });
+  }, runtimeOptions);
 
   pushReportStep(report, {
     kind: 'runtime',
@@ -1788,26 +1891,46 @@ function createProcessingReport(config, runtimeOptions = {}, gcodeContent = '') 
     human: 'Recorded which executable and engine revision handled this post-processing run.',
     technical: `runtime=${JSON.stringify(report.runtime)}`,
     data: report.runtime
-  });
+  }, runtimeOptions);
+
+  updateReportProgress(report, runtimeOptions, {
+    percent: 22,
+    phase: 'prepare',
+    label: '准备扫描 G-code',
+    detail: '配置已载入，正在启动支撑面与熨烫路径分析。',
+    currentStepTitle: report.steps[report.steps.length - 1]?.title || ''
+  }, { force: true });
 
   return report;
 }
 
-function pushReportStep(report, step = {}) {
+function pushReportStep(report, step = {}, runtimeOptions = null) {
   if (!report) {
     return;
   }
 
-  report.steps.push({
+  const nextStep = {
     kind: step.kind || 'info',
     title: step.title || 'Untitled step',
     human: step.human || '',
     technical: step.technical || '',
     data: step.data || null
-  });
+  };
+
+  report.steps.push(nextStep);
+
+  if (runtimeOptions) {
+    if (report.progress) {
+      report.progress.currentStepTitle = nextStep.title;
+      report.progress.updatedAt = new Date().toISOString();
+    }
+    emitReportUpdate(report, runtimeOptions, {
+      force: Boolean(step.forceEmitProgress)
+    });
+  }
 }
 
-function finalizeProcessingReport(report, outputGcode, status = 'completed', error = null) {
+function finalizeProcessingReport(report, outputGcode, status = 'completed', error = null, runtimeOptions = {}) {
   if (!report) {
     return null;
   }
@@ -1827,7 +1950,7 @@ function finalizeProcessingReport(report, outputGcode, status = 'completed', err
       data: {
         name: error.name || 'Error'
       }
-    });
+    }, runtimeOptions);
   } else {
     pushReportStep(report, {
       kind: 'output',
@@ -1837,10 +1960,23 @@ function finalizeProcessingReport(report, outputGcode, status = 'completed', err
       data: {
         outputPath: report.outputPath
       }
-    });
+    }, runtimeOptions);
   }
 
+  updateReportProgress(report, runtimeOptions, {
+    percent: 100,
+    phase: status === 'failed' ? 'failed' : 'completed',
+    label: status === 'failed' ? '后处理失败' : '后处理完成',
+    detail: status === 'failed'
+      ? '执行过程中出现错误，请展开查看详细步骤。'
+      : '处理结果已生成，正在准备展示最终报告。',
+    currentStepTitle: report.steps[report.steps.length - 1]?.title || ''
+  }, { force: true });
+
   delete report._startedAtMs;
+  delete report._lastReportedAtMs;
+  delete report._lastReportedPercentBucket;
+  delete report._lastReportedKey;
   return report;
 }
 
@@ -1861,7 +1997,8 @@ function prepareTrackedFeatureInjectionWithReport(options = {}) {
     currentZ,
     config,
     runtimeState = {},
-    report
+    report,
+    runtimeOptions = {}
   } = options;
 
   if (featureKind === 'support-interface') {
@@ -1895,7 +2032,7 @@ function prepareTrackedFeatureInjectionWithReport(options = {}) {
       human: `找到了候选${describeFeatureKind(featureKind)}，但清理尾迹挤出后已经没有有效的 XY 挤出，所以不会注入涂胶动作。`,
       technical: `${segmentData.marker} lines ${startLine}-${endLine}; deleteWipe() + hasValidInterfaceSet() => invalid; rawE=${formatCompactNumber(rawExtrusionSum)} cleanedE=${formatCompactNumber(cleanedExtrusionSum)}`,
       data: segmentData
-    });
+    }, runtimeOptions);
     return {
       mode: 'ignore',
       lines: [],
@@ -1914,7 +2051,7 @@ function prepareTrackedFeatureInjectionWithReport(options = {}) {
         ...segmentData,
         threshold: MAX_ORCA_IRONING_EXTRUSION
       }
-    });
+    }, runtimeOptions);
     return {
       mode: 'immediate',
       lines: buildSkippedIroningRecovery(cleanedInterface, currentZ, runtimeState, cleanedExtrusionSum),
@@ -1929,7 +2066,7 @@ function prepareTrackedFeatureInjectionWithReport(options = {}) {
     human: `已确认这是一段有效的${describeFeatureKind(featureKind)}，会先缓存到当前层，等命中 layer num 边界后再按 Python 逻辑统一注入涂胶动作。`,
     technical: `${segmentData.marker} lines ${startLine}-${endLine}; cleanedMotionCount=${cleanedMotionCount}; cleanedE=${formatCompactNumber(cleanedExtrusionSum)}; queued for layer-boundary buildInterfaceInjection()`,
     data: segmentData
-  });
+  }, runtimeOptions);
 
   return {
     mode: 'pending',
@@ -1941,6 +2078,8 @@ function prepareTrackedFeatureInjectionWithReport(options = {}) {
 function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOptions = {}) {
   const config = normalizeConfig(engineConfig);
   const lines = String(gcodeContent || '').split(/\r?\n/);
+  const totalInputLines = Math.max(1, lines.length);
+  const scanProgressStride = Math.max(1, Math.floor(totalInputLines / 64));
   const result = [];
   const report = createProcessingReport(config, runtimeOptions, gcodeContent);
   let activeFeatureKind = null;
@@ -1965,6 +2104,13 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
     retractLength: 0,
     travelSpeed: 0
   };
+
+  updateReportProgress(report, runtimeOptions, {
+    percent: 26,
+    phase: 'scan',
+    label: '扫描 G-code',
+    detail: `正在分析支撑面与熨烫路径（0 / ${totalInputLines} 行）。`
+  }, { force: true });
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const rawLine = lines[lineIndex];
@@ -2049,7 +2195,7 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
             currentZ,
             nozzleDiameter: config.machine.nozzleDiameter || 0.4
           }
-        });
+        }, runtimeOptions);
       } else if (!ironingDecision.shouldTrack && ironingDecision.ignoreReason === 'ironing-disabled') {
         pushReportStep(report, {
           kind: 'scan',
@@ -2059,7 +2205,7 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
           data: {
             line: lineIndex + 1
           }
-        });
+        }, runtimeOptions);
       }
     }
 
@@ -2072,7 +2218,8 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
         currentZ,
         config,
         runtimeState,
-        report
+        report,
+        runtimeOptions
       });
 
       if (preparedInjection.mode === 'immediate') {
@@ -2131,7 +2278,7 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
           currentZ,
           pendingInterfaceLines: pendingLayerInterfaceBuffer.length
         }
-      });
+      }, runtimeOptions);
       pendingLayerInterfaceBuffer = [];
     }
 
@@ -2145,6 +2292,19 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
     if (activeFeatureKind && line) {
       interfaceBuffer.push(line);
     }
+
+    if (
+      lineIndex === lines.length - 1
+      || lineIndex === 0
+      || ((lineIndex + 1) % scanProgressStride) === 0
+    ) {
+      updateReportProgress(report, runtimeOptions, {
+        percent: buildProgressPercentFromRange(26, 72, lineIndex + 1, totalInputLines),
+        phase: 'scan',
+        label: '扫描 G-code',
+        detail: `正在分析支撑面与熨烫路径（${lineIndex + 1} / ${totalInputLines} 行）。`
+      });
+    }
   }
 
   if (activeFeatureKind && interfaceBuffer.length > 0) {
@@ -2156,7 +2316,8 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
       currentZ,
       config,
       runtimeState,
-      report
+      report,
+      runtimeOptions
     });
 
     if (preparedInjection.mode === 'immediate') {
@@ -2177,11 +2338,29 @@ function processGcodeContentInternal(gcodeContent, engineConfig = {}, runtimeOpt
         currentZ,
         pendingInterfaceLines: pendingLayerInterfaceBuffer.length
       }
-    });
+    }, runtimeOptions);
   }
 
-  const outputGcode = applyPostProcessingPasses(result.join('\n'), config);
-  finalizeProcessingReport(report, outputGcode);
+  updateReportProgress(report, runtimeOptions, {
+    percent: 74,
+    phase: 'postprocess',
+    label: '应用后处理修正',
+    detail: '正在整理输出并执行后续修正阶段。'
+  }, { force: true });
+
+  const outputGcode = applyPostProcessingPasses(result.join('\n'), config, {
+    report,
+    runtimeOptions,
+    startPercent: 74,
+    endPercent: 96
+  });
+  updateReportProgress(report, runtimeOptions, {
+    percent: 98,
+    phase: 'finalize',
+    label: '汇总处理结果',
+    detail: '正在整理统计信息并准备最终报告。'
+  }, { force: true });
+  finalizeProcessingReport(report, outputGcode, 'completed', null, runtimeOptions);
   return {
     outputGcode,
     report
@@ -2692,9 +2871,11 @@ function buildWipingTowerLayerGcode(options = {}) {
   return lines;
 }
 
-function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
+function applyPostProcessingPasses(gcodeContent, engineConfig = {}, progressContext = null) {
   const config = normalizeConfig(engineConfig);
   const lines = String(gcodeContent || '').split(/\r?\n/);
+  const totalLines = Math.max(1, lines.length);
+  const progressStride = Math.max(1, Math.floor(totalLines / 64));
   const result = [];
   const multiplier = config.wiping.supportExtrusionMultiplier || 1;
   const nozzleDiameter = config.machine.nozzleDiameter || 0.4;
@@ -2711,7 +2892,8 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
   let stripNextTowerRecoveryG3 = false;
   let emittedFollowUpTowerCount = 0;
 
-  for (const rawLine of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const rawLine = lines[lineIndex];
     let line = rawLine.trimEnd();
 
     if (line.startsWith('; SKIPTYPE: head_wrap_detect')) {
@@ -2818,6 +3000,27 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
     }
 
     result.push(line);
+
+    if (
+      progressContext
+      && (
+        lineIndex === lines.length - 1
+        || lineIndex === 0
+        || ((lineIndex + 1) % progressStride) === 0
+      )
+    ) {
+      updateReportProgress(progressContext.report, progressContext.runtimeOptions, {
+        percent: buildProgressPercentFromRange(
+          progressContext.startPercent ?? 74,
+          progressContext.endPercent ?? 96,
+          lineIndex + 1,
+          totalLines
+        ),
+        phase: 'postprocess',
+        label: '应用后处理修正',
+        detail: `正在整理输出（${lineIndex + 1} / ${totalLines} 行）。`
+      });
+    }
   }
 
   const output = result.join('\n');
@@ -2826,11 +3029,23 @@ function applyPostProcessingPasses(gcodeContent, engineConfig = {}) {
     return output;
   }
 
-  return applyLegacyWallBufferPass(output, config);
+  updateReportProgress(progressContext?.report, progressContext?.runtimeOptions, {
+    percent: Math.max(
+      clampReportPercent(progressContext?.endPercent, 96),
+      97
+    ),
+    phase: 'postprocess',
+    label: '恢复 Legacy 墙体缓冲',
+    detail: '正在执行兼容旧版的墙体缓冲恢复阶段。'
+  });
+
+  return applyLegacyWallBufferPass(output, config, progressContext);
 }
 
-function applyLegacyWallBufferPass(gcodeContent, config = {}) {
+function applyLegacyWallBufferPass(gcodeContent, config = {}, progressContext = null) {
   const lines = String(gcodeContent || '').split(/\r?\n/);
+  const totalLines = Math.max(1, lines.length);
+  const progressStride = Math.max(1, Math.floor(totalLines / 48));
   const result = [];
   const bufferedWallBlocks = [];
   let layerHasSupportInterface = false;
@@ -2884,6 +3099,27 @@ function applyLegacyWallBufferPass(gcodeContent, config = {}) {
         result.push(...bufferedWallBlocks.shift());
       }
       releaseBufferedWallsAfterLayerChange = false;
+    }
+
+    if (
+      progressContext
+      && (
+        index === lines.length - 1
+        || index === 0
+        || ((index + 1) % progressStride) === 0
+      )
+    ) {
+      updateReportProgress(progressContext.report, progressContext.runtimeOptions, {
+        percent: buildProgressPercentFromRange(
+          Math.max(clampReportPercent(progressContext.startPercent, 74), 97),
+          99,
+          index + 1,
+          totalLines
+        ),
+        phase: 'postprocess',
+        label: '恢复 Legacy 墙体缓冲',
+        detail: `正在兼容旧版墙体缓冲逻辑（${index + 1} / ${totalLines} 行）。`
+      });
     }
   }
 

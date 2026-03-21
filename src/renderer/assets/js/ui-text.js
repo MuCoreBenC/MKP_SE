@@ -144,7 +144,7 @@ function initUIText() {
     bugDesc.textContent = '请生成诊断报告，发送至官方 QQ 群以获取协助';
   }
 
-  const bugReportButton = document.querySelector('#setting-update button[onclick="if(window.mkpAPI) window.mkpAPI.exportBugReport()"]');
+  const bugReportButton = document.getElementById('btn-setting-bug-report');
   if (bugReportButton) {
     bugReportButton.lastChild.textContent = '生成诊断报告 (至桌面)';
   }

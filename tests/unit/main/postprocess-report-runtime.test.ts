@@ -123,6 +123,12 @@ describe('postprocess report runtime helpers', () => {
     expect(state.steps).toHaveLength(1);
     expect(state.steps[0].technical).toContain('Viewer launched before process completion');
     expect(state.ui.autoCloseSeconds).toBe(10);
+    expect(state.ui.minimumProgressDurationMs).toBe(1000);
+    expect(state.progress).toMatchObject({
+      percent: 12,
+      phase: 'launching',
+      label: '显示后处理窗口'
+    });
   });
 
   it('creates a failed viewer snapshot that disables auto-close and keeps the CLI error message', () => {
@@ -141,6 +147,12 @@ describe('postprocess report runtime helpers', () => {
     expect(state.steps).toHaveLength(1);
     expect(state.steps[0].technical).toContain('CLI error: Offset X coordinate -5 exceeds machine minimum 0');
     expect(state.ui.autoCloseSeconds).toBe(0);
+    expect(state.ui.minimumProgressDurationMs).toBe(1000);
+    expect(state.progress).toMatchObject({
+      percent: 100,
+      phase: 'failed',
+      label: '后处理失败'
+    });
   });
 
   it('writes and reads report snapshots without losing structured runtime and UI fields', () => {
@@ -156,8 +168,14 @@ describe('postprocess report runtime helpers', () => {
         engineRevision: 'rev-1',
         mode: 'cli'
       },
+      progress: {
+        percent: 42,
+        phase: 'scan',
+        label: '扫描 G-code'
+      },
       ui: {
-        autoCloseSeconds: 10
+        autoCloseSeconds: 10,
+        minimumProgressDurationMs: 1000
       }
     };
 
