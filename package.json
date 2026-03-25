@@ -1,0 +1,27 @@
+{
+  "name": "mkpzero-react-replica",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "electron-updater": "^6.8.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^41.0.3",
+    "vite": "^5.4.11"
+  },
+  "scripts": {
+    "dev": "node start-dev.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "test": "node --test",
+    "preview": "vite preview",
+    "electron:dev": "node start-dev.js",
+    "electron:release-center": "node start-dev.js --release-center"
+  }
+}

@@ -1,0 +1,1 @@
+import{c as s,j as e,R as a,a as t,G as o}from"./index-CmmCz-5E.js";s.createRoot(document.getElementById("root")).render(e.jsx(a.StrictMode,{children:e.jsxs("div",{className:"h-screen",children:[e.jsx(t,{}),e.jsx(o,{})]})}));
