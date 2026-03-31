@@ -20,8 +20,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Binary files
-*.exe
+# Binary files (tracked by LFS)
 *.dll
 *.so
 
@@ -46,11 +45,11 @@ references/
 # Bin directory
 bin/
 
-# Backend executables
-backend/mkpsupport.exe
-backend/mkp-ipc-server.exe
-backend/mkp-processor.exe
-backend/mkp-support
+# Backend executables (tracked by LFS)
+# backend/mkpsupport.exe
+# backend/mkp-ipc-server.exe
+# backend/mkp-processor.exe
+# backend/mkp-support
 
 # Electron user data
 app_data/
