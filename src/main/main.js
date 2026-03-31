@@ -14,7 +14,9 @@ const {
   readDefaultCatalogConfig,
   readDefaultPreset,
   saveDefaultCatalogConfig,
-  saveDefaultPreset
+  saveDefaultPreset,
+  getMKPSEPresetsDir,
+  ensureMKPSEDirs
 } = require('./release-config-ops');
 const { exec, spawn } = require('child_process');
 const http = require('http');
@@ -330,7 +332,8 @@ function downloadPatchBuffer(url) {
 ipcMain.handle('duplicate-preset', (event, payload) => {
   try {
     const { fileName, printerId, versionType, realVersion } = payload;
-    const dir = path.join(app.getPath('userData'), 'Presets');
+    ensureMKPSEDirs();
+    const dir = getPresetsDirectory();
     const srcPath = path.join(dir, fileName);
 
     if (!fs.existsSync(srcPath)) throw new Error("源文件不存在");
@@ -406,11 +409,8 @@ ipcMain.handle('copy-bundled-preset', async (event, fileName) => {
       return { success: false, error: '打包资源中不存在该预设文件' };
     }
 
-    const userDataPath = path.join(app.getPath('userData'), 'Presets');
-    if (!fs.existsSync(userDataPath)) {
-      fs.mkdirSync(userDataPath, { recursive: true });
-    }
-
+    const { presetsDir: userDataPath } = ensureMKPSEDirs();
+    
     const targetPath = path.join(userDataPath, fileName);
     if (!fs.existsSync(targetPath)) {
       fs.copyFileSync(sourcePath, targetPath);
@@ -433,7 +433,8 @@ ipcMain.handle('copy-bundled-preset', async (event, fileName) => {
 // ==========================================
 ipcMain.handle('read-local-presets-manifest', async () => {
   try {
-    const userManifestPath = path.join(app.getPath('userData'), 'Presets', 'presets_manifest.json');
+    ensureMKPSEDirs();
+    const userManifestPath = path.join(getPresetsDirectory(), 'presets_manifest.json');
     const bundledManifestPath = app.isPackaged
       ? path.join(process.resourcesPath, 'cloud_data', 'presets', 'presets_manifest.json')
       : path.join(__dirname, '../../cloud_data/presets/presets_manifest.json');
@@ -450,7 +451,8 @@ ipcMain.handle('read-local-presets-manifest', async () => {
 
 ipcMain.handle('save-local-presets-manifest', async (event, jsonStr) => {
   try {
-    const manifestPath = path.join(app.getPath('userData'), 'Presets', 'presets_manifest.json');
+    ensureMKPSEDirs();
+    const manifestPath = path.join(getPresetsDirectory(), 'presets_manifest.json');
     fs.writeFileSync(manifestPath, jsonStr, 'utf-8');
     return { success: true };
   } catch (error) {
@@ -1200,7 +1202,8 @@ if (isAutoProcessMode) {
 
   // 监听前端的系统数据请求
   ipcMain.handle('get-userdata-path', () => {
-    return path.join(app.getPath('userData'), 'Presets'); 
+    ensureMKPSEDirs();
+    return getPresetsDirectory();
   });
 
   function createWindow() {
@@ -1348,7 +1351,7 @@ function mergeDeep(target, source) {
 }
 
 function getPresetsDirectory() {
-  return path.join(app.getPath('userData'), 'Presets');
+  return getMKPSEPresetsDir();
 }
 
 function getPresetBackupDirectory() {
@@ -1412,13 +1415,14 @@ function buildPresetDisplayName(fileName, printerId, versionType, jsonData = nul
 // ==========================================
 ipcMain.handle('get-local-presets', () => {
   try {
-    const userDataPath = path.join(app.getPath('userData'), 'Presets');
+    ensureMKPSEDirs();
+    const userDataPath = getPresetsDirectory();
     if (!fs.existsSync(userDataPath)) {
       return []; // 文件夹不存在就返回空数组
     }
     const files = fs.readdirSync(userDataPath);
-    // 只返回 .json 结尾的文件
-    return files.filter(f => f.toLowerCase().endsWith('.json')); 
+    // 只返回 .json 和 .toml 结尾的文件
+    return files.filter(f => f.toLowerCase().endsWith('.json') || f.toLowerCase().endsWith('.toml')); 
   } catch (error) {
     console.error("获取本地文件列表失败:", error);
     return [];
@@ -1595,7 +1599,8 @@ ipcMain.handle('list-local-presets-detailed', (event, query = {}) => {
 // ==========================================
 ipcMain.handle('check-file-exists', (event, fileName) => {
   try {
-    const filePath = path.join(app.getPath('userData'), 'Presets', fileName);
+    ensureMKPSEDirs();
+    const filePath = path.join(getPresetsDirectory(), fileName);
     return fs.existsSync(filePath);
   } catch (error) {
     return false;
@@ -1607,10 +1612,7 @@ ipcMain.handle('check-file-exists', (event, fileName) => {
 // ==========================================
 ipcMain.handle('download-file', async (event, fileUrl, fileName) => {
   try {
-    const userDataPath = path.join(app.getPath('userData'), 'Presets');
-    if (!fs.existsSync(userDataPath)) {
-      fs.mkdirSync(userDataPath, { recursive: true });
-    }
+    const { presetsDir: userDataPath } = ensureMKPSEDirs();
     
     // 目标保存路径
     const targetPath = path.join(userDataPath, fileName);
@@ -1642,7 +1644,8 @@ ipcMain.handle('download-file', async (event, fileUrl, fileName) => {
 // ==========================================
 ipcMain.handle('delete-file', (event, fileName) => {
   try {
-    const filePath = path.join(app.getPath('userData'), 'Presets', fileName);
+    ensureMKPSEDirs();
+    const filePath = path.join(getPresetsDirectory(), fileName);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return { success: true };
@@ -1781,7 +1784,8 @@ ipcMain.handle('get-short-path', (event, targetPath) => {
 ipcMain.handle('rename-preset-display', (event, payload) => {
   try {
     const { fileName, newName } = payload;
-    const destPath = path.join(app.getPath('userData'), 'Presets', fileName);
+    ensureMKPSEDirs();
+    const destPath = path.join(getPresetsDirectory(), fileName);
     if (!fs.existsSync(destPath)) throw new Error("文件不存在");
     
     // 扒开 JSON，注入 _custom_name，完美规避底层中文路径报错！
@@ -1798,7 +1802,8 @@ ipcMain.handle('rename-preset-display', (event, payload) => {
 
 ipcMain.handle('show-item-in-folder', (event, fileName) => {
   try {
-    const destPath = path.join(app.getPath('userData'), 'Presets', fileName);
+    ensureMKPSEDirs();
+    const destPath = path.join(getPresetsDirectory(), fileName);
     if (fs.existsSync(destPath)) {
       shell.showItemInFolder(destPath);
       return { success: true };

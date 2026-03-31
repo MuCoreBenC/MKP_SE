@@ -1,0 +1,54 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-03-31",
+  "presets": [
+    {
+      "id": "a1",
+      "type": "standard",
+      "file": "A1.toml",
+      "version": "1.0.0",
+      "description": "Bambu Lab A1 标准版涂胶配置",
+      "releaseNotes": [
+        "初始版本发布",
+        "优化涂胶速度和偏移参数"
+      ],
+      "lastModified": "2025-03-11"
+    },
+    {
+      "id": "a1mini",
+      "type": "standard",
+      "file": "A1M.toml",
+      "version": "1.0.0",
+      "description": "Bambu Lab A1 mini 标准版涂胶配置",
+      "releaseNotes": [
+        "初始版本发布",
+        "适配 A1 mini 打印区域"
+      ],
+      "lastModified": "2025-03-11"
+    },
+    {
+      "id": "a1mini",
+      "type": "quick",
+      "file": "A1Mquick.toml",
+      "version": "1.0.0",
+      "description": "Bambu Lab A1 mini 快速版涂胶配置",
+      "releaseNotes": [
+        "快速版本发布",
+        "优化速度参数提升效率"
+      ],
+      "lastModified": "2025-02-12"
+    },
+    {
+      "id": "x1",
+      "type": "lite",
+      "file": "X1.toml",
+      "version": "1.0.0",
+      "description": "Bambu Lab X1 精简版涂胶配置",
+      "releaseNotes": [
+        "初始版本发布",
+        "适配 X1 打印机结构"
+      ],
+      "lastModified": "2025-03-11"
+    }
+  ]
+}
