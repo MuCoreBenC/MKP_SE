@@ -33,8 +33,10 @@ Thumbs.db
 test.gcode
 test_config.toml
 
-# Cloud data (contains large files)
-cloud_data/
+# Cloud data
+# (subdirectories except presets are ignored via negation)
+cloud_data/*
+!cloud_data/presets/
 
 # Release upload directory
 release_upload/
