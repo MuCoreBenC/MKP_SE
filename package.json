@@ -1,0 +1,94 @@
+{
+  "name": "mkp-support-e",
+  "productName": "MKP SupportE",
+  "version": "0.2.10",
+  "description": "MKP Support Electron Application",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "chcp 65001 && electron .",
+    "pack": "electron-builder --dir",
+    "build": "electron-builder --win",
+    "dev": "npx tailwindcss -i ./src/input.css -o ./assets/css/tailwind-compiled.css --watch",
+    "build:hot-update": "node scripts/release-manager.js 2",
+    "release:center": "chcp 65001 && electron . --release-center"
+  },
+  "keywords": [],
+  "author": "Your Name",
+  "license": "ISC",
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "adm-zip": "^0.5.16",
+    "electron-updater": "^6.1.8",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.27",
+    "electron": "^41.1.0",
+    "electron-builder": "^24.9.1",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.19"
+  },
+  "build": {
+    "appId": "com.mkp.support.e.app",
+    "asar": false,
+    "compression": "maximum",
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "package.json",
+      "preload.js",
+      "src/**/*",
+      "!src/**/*.lnk",
+      "!cloud_data{,/**}",
+      "!release_upload{,/**}",
+      "!references{,/**}",
+      "!scripts{,/**}",
+      "!dist{,/**}"
+    ],
+    "extraResources": [
+      {
+        "from": "cloud_data",
+        "to": "cloud_data",
+        "filter": [
+          "**/*",
+          "!patch_v*.zip"
+        ]
+      },
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "MuCoreBenC",
+        "repo": "MKP_Support_Electron"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MKP SupportE",
+      "license": "LICENSE",
+      "include": "build/installer.nsh"
+    }
+  }
+}

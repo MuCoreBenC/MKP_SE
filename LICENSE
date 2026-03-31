@@ -1,0 +1,81 @@
+﻿MKP Support Electron (MKPSupportE) 最终用户许可协议 (EULA)
+
+更新日期：2026年03月10日
+生效日期：2026年03月10日
+
+欢迎您使用 MKP SupportE（以下简称“本软件”或“MKPSE”）！
+本软件是由独立开发者 MuCoreBenC（以下简称“开发者”）基于开源项目 YZcat2023/MKPSupport 开发的第三方可视化桌面应用程序，旨在为您提供更便捷的 3D 打印支撑面后处理交互体验。
+
+为使用本软件，您应当阅读并遵守本协议。请您务必审慎阅读、充分理解各条款内容，特别是免除或者限制开发者责任的条款（如第三条“核心免责声明”）。
+
+除非您已充分阅读、完全理解并接受本协议所有条款，否则您无权下载、安装或使用本软件。您的安装和使用行为即视为您已阅读并完全同意本协议的约束。
+
+一、 协议的范围与开源致谢
+1.1 协议适用：本协议是您与开发者之间关于您下载、安装、使用本软件所订立的协议。
+1.2 开源致谢：本软件的底层 Gcode 处理算法、核心参数理念及数据结构均源自 YZcat2023 发布的开源项目 MKPSupport。本软件作为其衍生 GUI 桌面版本，严格遵守原作者的开源精神。感谢原作者为 3D 打印社区做出的杰出贡献。
+
+二、 软件的许可与使用限制
+2.1 许可授予：开发者给予您一项个人的、免费的、非商业的、不可转让及非排他性的许可，允许您在个人计算机上安装和使用本软件。
+2.2 使用限制：除法律法规允许或开发者书面许可外，您不得从事下列行为：
+  (1) 对本软件进行反向工程、反向汇编、反向编译以获取源代码；
+  (2) 对本软件进行恶意篡改，或将其用于任何可能对 3D 打印设备造成物理破坏的非法目的。
+
+三、 核心免责声明（硬件风险绝对提示）
+3.1 硬件操作风险：您充分理解并同意，本软件涉及对 3D 打印机的 Z 轴偏移、XY 轴偏移以及后处理 Gcode 脚本的直接修改。这些参数直接决定 3D 打印机喷嘴的物理运动轨迹。
+3.2 风险自担：错误的参数设置（如过大的 Z 轴负补偿）极可能导致打印机喷嘴直接刮擦打印床（撞床），甚至造成打印头组件、热床等硬件设备的物理损坏。您必须在完全了解自身打印机特性及相关参数含义的前提下谨慎使用，并在应用 Gcode 前进行模拟检查。
+3.3 免责声明：在法律允许的最大范围内，因您使用本软件修改参数、应用预设而产生的一切直接或间接后果（包括但不限于 3D 打印机硬件损坏、耗材浪费、财产损失、人身伤害等），均由您自行承担。开发者不对由此产生的任何损失承担赔偿责任。
+
+四、 用户数据与隐私保护
+4.1 本地运行原则：本软件是一款重度依赖本地环境运行的工具软件。您的预设参数、配置信息均存储于您的本地设备中。
+4.2 云端通信：仅在您使用“检查更新”功能时，本软件会向 GitHub/Gitee 等托管平台发起安全的网络请求以获取最新预设清单。在此过程中，本软件绝对不会收集、上传您的任何个人身份信息或隐私数据。
+
+五、 软件的更新与维护
+5.1 终止维护权：作为免费的个人开源性质项目，开发者不对本软件的永久维护、功能更新及长期技术支持作出任何承诺。开发者有权在不事先通知的情况下中止对本软件的维护。
+5.2 第三方切片软件：开发者不对您因使用第三方切片软件（如 Bambu Studio、OrcaSlicer 等）本身存在的缺陷或接口变更而导致的打印失败负责。
+
+六、 其他条款
+6.1 “原样”提供：本软件按“原样（AS IS）”提供，不附带任何明示或暗示的保证，包括但不限于针对特定用途的适用性或无错误运行的保证。
+
+如果您同意上述条款，请点击向导下方的“我同意”按钮继续安装。祝您的 3D 打印之旅顺利！
+
+
+==================================================
+
+
+MKP Support Electron (MKPSupportE) End User License Agreement (EULA)
+
+Update Date: March 10, 2026
+Effective Date: March 10, 2026
+
+Welcome to MKP Support Electron (hereinafter referred to as the "Software" or "MKPSE")! 
+This Software is a third-party visual desktop application developed by independent developer MuCoreBenC (hereinafter referred to as the "Developer"), based on the open-source project YZcat2023/MKPSupport. It aims to provide you with a more convenient interactive experience for 3D printing support surface post-processing.
+
+Before installing or using the Software, please read this EULA carefully, especially the limitations of liability and hardware risk disclaimers (Section 3). By installing and using this Software, you acknowledge that you have read, understood, and agree to be bound by all terms of this Agreement.
+
+1. Scope and Open Source Acknowledgment
+1.1 Scope: This Agreement is a legal agreement between you and the Developer regarding your use of the Software.
+1.2 Acknowledgment: The underlying Gcode processing algorithms, core parameter concepts, and data structures of this Software originate from the open-source project MKPSupport released by YZcat2023. We strictly adhere to the open-source spirit and express our deepest gratitude to the original author for their outstanding contribution to the 3D printing community.
+
+2. License Grant and Restrictions
+2.1 License Grant: The Developer grants you a personal, free, non-commercial, non-transferable, and non-exclusive license to install and use the Software.
+2.2 Restrictions: You may not:
+  (1) Reverse engineer, decompile, or disassemble the Software;
+  (2) Maliciously tamper with the Software or use it for any illegal purposes that may cause physical damage to 3D printing equipment.
+
+3. Core Disclaimer (Strict Hardware Risk Warning)
+3.1 Hardware Risks: You fully understand and agree that this Software involves direct modifications to your 3D printer's Z-axis offset, XY-axis offset, and post-processing Gcode scripts. These parameters directly dictate the physical movement trajectory of the printer nozzle.
+3.2 Assumption of Risk: Incorrect parameter settings (such as excessive negative Z-axis compensation) are highly likely to cause the nozzle to scrape the print bed (bed crash), potentially leading to severe physical damage to the printhead assembly, heat bed, and other hardware. You must use this tool with extreme caution and simulate the Gcode before actual printing.
+3.3 Disclaimer of Liability: TO THE MAXIMUM EXTENT PERMITTED BY LAW, YOU ASSUME ALL RISKS AND RESPONSIBILITIES FOR ANY DIRECT OR INDIRECT CONSEQUENCES ARISING FROM THE USE OF THIS SOFTWARE (INCLUDING BUT NOT LIMITED TO HARDWARE DAMAGE, WASTED FILAMENT, PROPERTY LOSS, OR PERSONAL INJURY). THE DEVELOPER SHALL NOT BE LIABLE FOR ANY DAMAGES WHATSOEVER.
+
+4. Data and Privacy
+4.1 Local Execution: This Software operates primarily in your local environment. Your preset parameters and configurations are stored locally on your device.
+4.2 Network Requests: The Software only initiates secure network requests to platforms like GitHub/Gitee when you manually check for updates. The Software DOES NOT collect, upload, or track any of your personally identifiable information or privacy data.
+
+5. Updates and Maintenance
+5.1 Right to Terminate: As a free, personal open-source project, the Developer makes no commitment to perpetual maintenance, feature updates, or long-term technical support. 
+5.2 Third-Party Slicers: The Developer is not responsible for print failures caused by defects or API changes in third-party slicing software (e.g., Bambu Studio, OrcaSlicer).
+
+6. Miscellaneous
+6.1 "AS IS" Provision: THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+If you agree to the above terms, please click "I Agree" to continue the installation. Happy 3D Printing!

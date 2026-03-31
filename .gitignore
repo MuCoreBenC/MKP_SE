@@ -1,0 +1,63 @@
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+
+# Binary files
+*.exe
+*.dll
+*.so
+
+# Large files
+*.zip
+*.7z
+*.rar
+
+# Test files
+test.gcode
+test_config.toml
+
+# Cloud data (contains large files)
+cloud_data/
+
+# Release upload directory
+release_upload/
+
+# References directory
+references/
+
+# Bin directory
+bin/
+
+# Backend executables
+backend/mkpsupport.exe
+backend/mkp-ipc-server.exe
+backend/mkp-processor.exe
+backend/mkp-support
+
+# Electron user data
+app_data/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

@@ -1,0 +1,224 @@
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/BurntSushi/toml"
+	"github.com/mkp/mkp-go/internal/para"
+)
+
+func CreateMKPSupportDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot find home dir: %w", err)
+	}
+	dir := filepath.Join(home, "Documents", "MKPSupport")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("cannot create MKPSupport dir: %w", err)
+	}
+	return dir, nil
+}
+
+// CreateMKPSEDir 创建 MKPSE 目录（与原版 MKP 目录并列）
+func CreateMKPSEDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot find home dir: %w", err)
+	}
+	dir := filepath.Join(home, "Documents", "MKPSE")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("cannot create MKPSE dir: %w", err)
+	}
+	return dir, nil
+}
+
+// GetMKPSEPresetsDir 获取 MKPSE 预设目录
+func GetMKPSEPresetsDir() (string, error) {
+	baseDir, err := CreateMKPSEDir()
+	if err != nil {
+		return "", err
+	}
+	presetsDir := filepath.Join(baseDir, "presets")
+	if err := os.MkdirAll(presetsDir, 0755); err != nil {
+		return "", fmt.Errorf("cannot create MKPSE presets dir: %w", err)
+	}
+	return presetsDir, nil
+}
+
+func ReadTOML(path string, cfg *para.Config) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read toml %s: %w", path, err)
+	}
+
+	var raw map[string]interface{}
+	if _, err := toml.Decode(string(data), &raw); err != nil {
+		return fmt.Errorf("parse toml %s: %w", path, err)
+	}
+
+	parseToolhead(raw, cfg)
+	parseWiping(raw, cfg)
+	parseTower(raw, cfg)
+
+	return nil
+}
+
+func ReadJSON(path string, cfg *para.Config) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read json %s: %w", path, err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("parse json %s: %w", path, err)
+	}
+
+	parseToolhead(raw, cfg)
+	parseWiping(raw, cfg)
+	parseTower(raw, cfg)
+
+	return nil
+}
+
+func ReadConfig(path string, cfg *para.Config) error {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".json":
+		return ReadJSON(path, cfg)
+	case ".toml":
+		return ReadTOML(path, cfg)
+	default:
+		return fmt.Errorf("unsupported config format: %s", ext)
+	}
+}
+
+func InitializeDefaultTowerGcode(cfg *para.Config, wipingGcode, towerBaseLayerGcode string) {
+	if cfg.WipingGcode == "" {
+		cfg.WipingGcode = wipingGcode
+	}
+	if cfg.TowerBaseLayerGcode == "" {
+		cfg.TowerBaseLayerGcode = towerBaseLayerGcode
+	}
+}
+
+func parseToolhead(raw map[string]interface{}, cfg *para.Config) {
+	toolhead, ok := raw["toolhead"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if v, ok := toolhead["speed_limit"].(float64); ok {
+		cfg.MaxSpeed = v
+	}
+	if offset, ok := toolhead["offset"].(map[string]interface{}); ok {
+		if v, ok := offset["x"].(float64); ok {
+			cfg.XOffset = v
+		}
+		if v, ok := offset["y"].(float64); ok {
+			cfg.YOffset = v
+		}
+		if v, ok := offset["z"].(float64); ok {
+			cfg.ZOffset = v
+		}
+	}
+	if v, ok := toolhead["custom_mount_gcode"].(string); ok {
+		cfg.CustomMountGcode = v
+	}
+	if v, ok := toolhead["custom_unmount_gcode"].(string); ok {
+		cfg.CustomUnmountGcode = v
+	}
+}
+
+func parseWiping(raw map[string]interface{}, cfg *para.Config) {
+	wiping, ok := raw["wiping"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if v, ok := wiping["have_wiping_components"].(bool); ok {
+		cfg.UseWipingTowers = v
+	}
+	if v, ok := wiping["wiper_x"].(float64); ok {
+		cfg.WiperX = v
+	}
+	if v, ok := wiping["wiper_y"].(float64); ok {
+		cfg.WiperY = v
+	}
+	if v, ok := wiping["wipetower_speed"].(float64); ok {
+		cfg.WipeTowerPrintSpeed = v
+	}
+	if v, ok := wiping["nozzle_cooling_flag"].(bool); ok {
+		cfg.NozzleCoolingFlag = v
+	}
+	if v, ok := wiping["iron_apply_flag"].(bool); ok {
+		cfg.IronApplyFlag = v
+	}
+	if v, ok := wiping["user_dry_time"].(float64); ok {
+		cfg.UserDryTime = v
+	}
+	if v, ok := wiping["force_thick_bridge_flag"].(bool); ok {
+		cfg.ForceThickBridgeFlag = v
+	}
+	if v, ok := wiping["support_extrusion_multiplier"].(float64); ok {
+		cfg.SupportExtrusionMultiplier = v
+	}
+}
+
+func parseTower(raw map[string]interface{}, cfg *para.Config) {
+	tower, ok := raw["tower"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	if v, ok := tower["wiping_gcode"].(string); ok {
+		cfg.WipingGcode = v
+	}
+	if v, ok := tower["tower_base_layer_gcode"].(string); ok {
+		cfg.TowerBaseLayerGcode = v
+	}
+	if v, ok := tower["tower_extrude_ratio"].(float64); ok {
+		cfg.TowerExtrudeRatio = v
+	}
+	if v, ok := tower["extra_tower_height"].(float64); ok {
+		cfg.ExtraTowerHeight = v
+	}
+}
+
+func WriteTOML(path string, cfg *para.Config) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create toml %s: %w", path, err)
+	}
+	defer f.Close()
+
+	fmt.Fprintf(f, "# MKPSupport Configuration\n")
+	fmt.Fprintf(f, "# Generated by mkp-go\n\n")
+
+	enc := toml.NewEncoder(f)
+	if err := enc.Encode(cfg); err != nil {
+		return fmt.Errorf("encode toml: %w", err)
+	}
+	return nil
+}
+
+func ListPresets(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			if ext == ".toml" || ext == ".json" {
+				names = append(names, e.Name())
+			}
+		}
+	}
+	return names, nil
+}
